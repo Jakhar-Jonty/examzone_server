@@ -9,13 +9,23 @@ import cloudinary from '../config/cloudinary.js';
 // Question Management
 export const addQuestion = async (req, res) => {
   try {
+    // Handle multer/Cloudinary errors
+    if (req.fileError) {
+      return res.status(400).json({ 
+        message: req.fileError.message || 'File upload failed',
+        error: req.fileError.message
+      });
+    }
+
     const questionData = {
       ...req.body,
       createdBy: req.user._id
     };
 
     if (req.file) {
+      // req.file.path is set by CloudinaryStorage
       questionData.questionImage = req.file.path;
+      console.log('File uploaded successfully:', req.file.path);
     }
 
     const question = new Question(questionData);
@@ -23,7 +33,20 @@ export const addQuestion = async (req, res) => {
 
     res.status(201).json({ message: 'Question added successfully', question });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    console.error('Error adding question:', error);
+    
+    // Check for Cloudinary-specific errors
+    if (error.message && error.message.includes('api_key')) {
+      return res.status(500).json({ 
+        message: 'Cloudinary configuration error. Please check your API credentials in .env file.',
+        error: 'Must supply api_key'
+      });
+    }
+    
+    res.status(500).json({ 
+      message: error.message || 'Failed to add question',
+      error: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
   }
 };
 
@@ -66,14 +89,29 @@ export const updateQuestion = async (req, res) => {
     Object.assign(question, req.body);
     
     if (req.file) {
+      // Delete old image from Cloudinary if exists
+      if (question.questionImage) {
+        try {
+          const publicId = question.questionImage.split('/').slice(-2).join('/').split('.')[0];
+          await cloudinary.uploader.destroy(publicId);
+        } catch (deleteError) {
+          console.error('Error deleting old image:', deleteError);
+          // Continue even if deletion fails
+        }
+      }
       question.questionImage = req.file.path;
+      console.log('File uploaded successfully:', req.file.path);
     }
 
     await question.save();
 
     res.json({ message: 'Question updated successfully', question });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    console.error('Error updating question:', error);
+    res.status(500).json({ 
+      message: error.message || 'Failed to update question',
+      error: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
   }
 };
 

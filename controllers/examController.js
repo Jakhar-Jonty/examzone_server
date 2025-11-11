@@ -57,7 +57,10 @@ export const getAvailableExams = async (req, res) => {
 export const getExamDetails = async (req, res) => {
   try {
     const exam = await Exam.findById(req.params.id)
-      .populate('questions', '-correctAnswer -explanation');
+      .populate({
+        path: 'questions',
+        select: 'questionText questionTextHindi options optionsHindi marks questionImage language difficulty category subject topic'
+      });
     
     if (!exam) {
       return res.status(404).json({ message: 'Exam not found' });
@@ -116,7 +119,10 @@ export const startExam = async (req, res) => {
       exam: exam._id,
       isCompleted: false
     })
-    .populate('answers.question');
+    .populate({
+      path: 'answers.question',
+      select: 'questionText questionTextHindi options optionsHindi correctAnswer explanation explanationHindi marks questionImage language'
+    });
 
     if (!attempt) {
       // Initialize answers array
@@ -141,7 +147,10 @@ export const startExam = async (req, res) => {
       
       // Populate questions after save
       attempt = await ExamAttempt.findById(attempt._id)
-        .populate('answers.question');
+        .populate({
+          path: 'answers.question',
+          select: 'questionText questionTextHindi options optionsHindi correctAnswer explanation explanationHindi marks questionImage language'
+        });
     }
 
     res.json({ attempt });
@@ -180,7 +189,10 @@ export const submitExam = async (req, res) => {
   try {
     const attempt = await ExamAttempt.findById(req.params.attemptId)
       .populate('exam')
-      .populate('answers.question');
+      .populate({
+        path: 'answers.question',
+        select: 'questionText questionTextHindi options optionsHindi correctAnswer explanation explanationHindi marks questionImage language'
+      });
     
     if (!attempt) {
       return res.status(404).json({ message: 'Attempt not found' });
@@ -257,7 +269,7 @@ export const getResult = async (req, res) => {
       .populate('exam')
       .populate({
         path: 'answers.question',
-        select: 'questionText options correctAnswer explanation marks questionImage'
+        select: 'questionText questionTextHindi options optionsHindi correctAnswer explanation explanationHindi marks questionImage language'
       });
 
     if (!attempt) {
