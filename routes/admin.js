@@ -17,6 +17,7 @@ import {
   getDashboardStats,
   getSubjectsAndTopics,
   getUsers,
+  upgradeUserSubscription,
   uploadFile
 } from '../controllers/adminController.js';
 
@@ -58,6 +59,7 @@ router.delete('/exams/:id', adminAuth, deleteExam);
 router.get('/dashboard', adminAuth, getDashboardStats);
 router.get('/subjects-topics', adminAuth, getSubjectsAndTopics);
 router.get('/users', adminAuth, getUsers);
+router.post('/users/:userId/upgrade-subscription', adminAuth, upgradeUserSubscription);
 
 // File Upload
 router.post('/upload', adminAuth, upload.single('file'), uploadFile);

@@ -533,6 +533,69 @@ export const getUsers = async (req, res) => {
   }
 };
 
+// Upgrade User Subscription
+export const upgradeUserSubscription = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { plan, duration } = req.body; // plan: 'monthly' or 'yearly', duration in months
+
+    if (!plan || !['monthly', 'yearly'].includes(plan)) {
+      return res.status(400).json({ message: 'Invalid plan. Must be monthly or yearly' });
+    }
+
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    // Calculate expiry date
+    const now = new Date();
+    const months = plan === 'monthly' ? 1 : 12;
+    
+    // If user already has premium and subscription hasn't expired, extend from current expiry
+    // Otherwise, start from now
+    let expiryDate;
+    if (user.subscriptionStatus === 'premium' && user.subscriptionExpiry && new Date(user.subscriptionExpiry) > now) {
+      expiryDate = new Date(user.subscriptionExpiry);
+      expiryDate.setMonth(expiryDate.getMonth() + months);
+    } else {
+      expiryDate = new Date(now);
+      expiryDate.setMonth(expiryDate.getMonth() + months);
+    }
+
+    // Update user subscription
+    user.subscriptionStatus = 'premium';
+    user.subscriptionExpiry = expiryDate;
+    await user.save();
+
+    // Create subscription record
+    const subscription = new Subscription({
+      user: user._id,
+      plan: plan,
+      amount: 0, // Admin upgrade, no payment
+      paymentId: `admin_upgrade_${Date.now()}`,
+      orderId: `admin_order_${Date.now()}`,
+      status: 'active',
+      startDate: now,
+      endDate: expiryDate,
+      autoRenew: false,
+    });
+    await subscription.save();
+
+    res.json({
+      message: `User subscription upgraded to ${plan} successfully`,
+      user: {
+        _id: user._id,
+        name: user.name,
+        subscriptionStatus: user.subscriptionStatus,
+        subscriptionExpiry: user.subscriptionExpiry,
+      },
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
 // File Upload
 export const uploadFile = async (req, res) => {
   try {
