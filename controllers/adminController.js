@@ -3,8 +3,27 @@ import Exam from '../models/Exam.js';
 import User from '../models/User.js';
 import ExamAttempt from '../models/ExamAttempt.js';
 import Subscription from '../models/Subscription.js';
+import SubjectTopic from '../models/SubjectTopic.js';
 import { generateQuestions } from '../utils/aiQuestionGenerator.js';
 import cloudinary from '../config/cloudinary.js';
+
+// Helper function to save/update subject-topic combination
+const saveSubjectTopic = async (subject, topic, category) => {
+  try {
+    const topicValue = topic || '';
+    await SubjectTopic.findOneAndUpdate(
+      { subject: subject.trim(), topic: topicValue.trim(), category },
+      { 
+        $inc: { usageCount: 1 },
+        $set: { lastUsed: new Date() }
+      },
+      { upsert: true, new: true }
+    );
+  } catch (error) {
+    console.error('Error saving subject-topic:', error);
+    // Don't throw - this is not critical
+  }
+};
 
 // Question Management
 export const addQuestion = async (req, res) => {
@@ -30,6 +49,9 @@ export const addQuestion = async (req, res) => {
 
     const question = new Question(questionData);
     await question.save();
+
+    // Save subject-topic combination
+    await saveSubjectTopic(questionData.subject, questionData.topic, questionData.category);
 
     res.status(201).json({ message: 'Question added successfully', question });
   } catch (error) {
@@ -105,6 +127,9 @@ export const updateQuestion = async (req, res) => {
 
     await question.save();
 
+    // Update subject-topic combination
+    await saveSubjectTopic(question.subject, question.topic, question.category);
+
     res.json({ message: 'Question updated successfully', question });
   } catch (error) {
     console.error('Error updating question:', error);
@@ -150,7 +175,7 @@ export const deleteQuestions = async (req, res) => {
 // AI Question Generation
 export const generateAIGuestions = async (req, res) => {
   try {
-    const { examType, subject, count, difficulty, language = 'English' } = req.body;
+    const { examType, subject, topic, count, difficulty, language = 'English' } = req.body;
 
     if (!examType || !subject || !count || !difficulty) {
       return res.status(400).json({ 
@@ -166,12 +191,13 @@ export const generateAIGuestions = async (req, res) => {
       return res.status(400).json({ message: 'Language must be Hindi, English, or Both' });
     }
 
-    const questions = await generateQuestions(examType, subject, count, difficulty, language);
+    const questions = await generateQuestions(examType, subject, topic, count, difficulty, language);
 
     res.json({ 
       message: 'Questions generated successfully',
       questions: questions.map(q => ({
         ...q,
+        topic: topic || q.topic || '',
         isAIGenerated: true,
         createdBy: req.user._id
       }))
@@ -196,6 +222,11 @@ export const saveAIGuestions = async (req, res) => {
       }))
     );
 
+    // Save subject-topic combinations for all saved questions
+    for (const question of savedQuestions) {
+      await saveSubjectTopic(question.subject, question.topic, question.category);
+    }
+
     res.json({ 
       message: 'Questions saved successfully',
       count: savedQuestions.length,
@@ -209,7 +240,7 @@ export const saveAIGuestions = async (req, res) => {
 // Exam Management
 export const createExam = async (req, res) => {
   try {
-    const { title, category, scheduledTime, duration, questions, totalMarks, selectionMethod, subjects, questionCount, language = 'English' } = req.body;
+    const { title, category, scheduledTime, duration, questions, totalMarks, selectionMethod, subjects, questionCount, language = 'English', status = 'draft' } = req.body;
 
     // Validate language
     if (language && !['Hindi', 'English', 'Both'].includes(language)) {
@@ -225,6 +256,12 @@ export const createExam = async (req, res) => {
       if (subjects && subjects.length > 0) {
         query.subject = { $in: subjects };
       }
+      if (language && language !== 'Both') {
+        query.$or = [
+          { language: language },
+          { language: 'Both' }
+        ];
+      }
       
       const availableQuestions = await Question.find(query);
       const shuffled = availableQuestions.sort(() => 0.5 - Math.random());
@@ -235,8 +272,19 @@ export const createExam = async (req, res) => {
       return res.status(400).json({ message: 'No questions selected' });
     }
 
-    const scheduledDate = new Date(scheduledTime);
-    const expiresAt = new Date(scheduledDate.getTime() + 24 * 60 * 60 * 1000);
+    // Handle scheduledTime based on status
+    let scheduledDate;
+    let expiresAt;
+    
+    if (status === 'scheduled') {
+      // Auto-schedule: set to current time + 1 hour
+      scheduledDate = new Date(Date.now() + 60 * 60 * 1000);
+      expiresAt = new Date(scheduledDate.getTime() + 24 * 60 * 60 * 1000);
+    } else {
+      // Draft: use provided scheduledTime or set to future date
+      scheduledDate = scheduledTime ? new Date(scheduledTime) : new Date(Date.now() + 24 * 60 * 60 * 1000);
+      expiresAt = new Date(scheduledDate.getTime() + 24 * 60 * 60 * 1000);
+    }
 
     const exam = new Exam({
       title,
@@ -247,15 +295,20 @@ export const createExam = async (req, res) => {
       totalMarks: totalMarks || selectedQuestions.length,
       language: language || 'English',
       expiresAt,
-      status: req.body.status || 'draft',
+      status: status,
       createdBy: req.user._id
     });
 
     await exam.save();
 
-    const populatedExam = await Exam.findById(exam._id).populate('questions');
+    const populatedExam = await Exam.findById(exam._id)
+      .populate('questions', 'questionText questionTextHindi options optionsHindi marks questionImage language difficulty category subject topic');
 
-    res.status(201).json({ message: 'Exam created successfully', exam: populatedExam });
+    res.status(201).json({ 
+      message: 'Exam created successfully', 
+      exam: populatedExam,
+      selectedQuestions: selectedQuestions.length
+    });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -292,18 +345,61 @@ export const updateExam = async (req, res) => {
       return res.status(400).json({ message: 'Can only edit draft exams' });
     }
 
-    Object.assign(exam, req.body);
+    // Update fields
+    if (req.body.title) exam.title = req.body.title;
+    if (req.body.category) exam.category = req.body.category;
+    if (req.body.duration) exam.duration = req.body.duration;
+    if (req.body.language) exam.language = req.body.language;
+    if (req.body.questions) exam.questions = req.body.questions;
+    if (req.body.totalMarks) exam.totalMarks = req.body.totalMarks;
     
+    // Handle scheduledTime
     if (req.body.scheduledTime) {
       const scheduledDate = new Date(req.body.scheduledTime);
+      exam.scheduledTime = scheduledDate;
       exam.expiresAt = new Date(scheduledDate.getTime() + 24 * 60 * 60 * 1000);
+    }
+
+    // Recalculate totalMarks if questions changed
+    if (req.body.questions && req.body.questions.length > 0) {
+      exam.totalMarks = req.body.totalMarks || req.body.questions.length;
     }
 
     await exam.save();
 
-    const populatedExam = await Exam.findById(exam._id).populate('questions');
+    const populatedExam = await Exam.findById(exam._id)
+      .populate('questions', 'questionText questionTextHindi options optionsHindi marks questionImage language difficulty category subject topic');
 
     res.json({ message: 'Exam updated successfully', exam: populatedExam });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+export const publishExam = async (req, res) => {
+  try {
+    const exam = await Exam.findById(req.params.id);
+    
+    if (!exam) {
+      return res.status(404).json({ message: 'Exam not found' });
+    }
+
+    if (exam.status !== 'draft') {
+      return res.status(400).json({ message: 'Can only publish draft exams' });
+    }
+
+    if (!exam.scheduledTime) {
+      return res.status(400).json({ message: 'Exam must have a scheduled time before publishing' });
+    }
+
+    // Update status to scheduled
+    exam.status = 'scheduled';
+    await exam.save();
+
+    const populatedExam = await Exam.findById(exam._id)
+      .populate('questions', 'questionText questionTextHindi options optionsHindi marks questionImage language difficulty category subject topic');
+
+    res.json({ message: 'Exam published successfully', exam: populatedExam });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -324,6 +420,47 @@ export const deleteExam = async (req, res) => {
     await exam.deleteOne();
 
     res.json({ message: 'Exam deleted successfully' });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// Get subjects and topics
+export const getSubjectsAndTopics = async (req, res) => {
+  try {
+    const { category } = req.query;
+    const query = {};
+    
+    if (category) {
+      query.category = category;
+    }
+
+    const subjectTopics = await SubjectTopic.find(query)
+      .sort({ usageCount: -1, lastUsed: -1 })
+      .limit(1000);
+
+    // Group by subject
+    const grouped = {};
+    subjectTopics.forEach(st => {
+      if (!grouped[st.subject]) {
+        grouped[st.subject] = {
+          subject: st.subject,
+          topics: [],
+          category: st.category
+        };
+      }
+      if (st.topic && !grouped[st.subject].topics.includes(st.topic)) {
+        grouped[st.subject].topics.push(st.topic);
+      }
+    });
+
+    // Convert to array and sort topics by usage
+    const result = Object.values(grouped).map(item => ({
+      ...item,
+      topics: item.topics.sort()
+    }));
+
+    res.json({ subjectsAndTopics: result });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }

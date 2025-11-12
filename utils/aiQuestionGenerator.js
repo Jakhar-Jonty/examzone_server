@@ -25,7 +25,7 @@ const getOpenAIClient = () => {
   return openai;
 };
 
-export const generateQuestions = async (examType, subject, count, difficulty, language = 'English') => {
+export const generateQuestions = async (examType, subject, topic, count, difficulty, language = 'English') => {
   try {
     const client = getOpenAIClient();
     
@@ -38,7 +38,8 @@ export const generateQuestions = async (examType, subject, count, difficulty, la
       languageInstruction = 'Generate each question with both English and Hindi versions. For each question, provide questionText (English), questionTextHindi (Hindi), options (English), optionsHindi (Hindi), explanation (English), and explanationHindi (Hindi).';
     }
     
-    const prompt = `Generate ${count} multiple choice questions for ${examType} exam on ${subject} topic with ${difficulty} difficulty. ${languageInstruction}
+    const topicText = topic ? ` on the topic "${topic}"` : '';
+    const prompt = `Generate ${count} multiple choice questions for ${examType} exam on ${subject}${topicText} with ${difficulty} difficulty. ${languageInstruction}
 
 Return a JSON object with a "questions" key containing an array with this exact structure:
 
@@ -79,6 +80,7 @@ ${language === 'Both' ? `{
       "correctAnswer": "A",
       "explanation": "...",
       "subject": "${subject}",
+      "topic": "${topic || ''}",
       "marks": 1
     }
   ]
@@ -153,6 +155,7 @@ Make sure each question has exactly 4 options labeled A, B, C, D. The correctAns
         correctAnswer: q.correctAnswer,
         explanation: q.explanation,
         subject: q.subject || subject,
+        topic: q.topic || topic || '',
         marks: q.marks || 1,
         difficulty: difficulty,
         category: examType,

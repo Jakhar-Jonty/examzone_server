@@ -11,7 +11,7 @@ const questionSchema = new mongoose.Schema({
     enum: ['A', 'B', 'C', 'D'], 
     required: true 
   },
-  explanation: { type: String, required: true },
+  explanation: { type: String },
   category: { 
     type: String, 
     enum: ['SSC', 'Banking', 'HSSC'], 

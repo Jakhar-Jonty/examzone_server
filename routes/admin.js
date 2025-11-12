@@ -12,8 +12,10 @@ import {
   createExam,
   getExams,
   updateExam,
+  publishExam,
   deleteExam,
   getDashboardStats,
+  getSubjectsAndTopics,
   getUsers,
   uploadFile
 } from '../controllers/adminController.js';
@@ -49,10 +51,12 @@ router.post('/questions/save-ai', adminAuth, saveAIGuestions);
 router.post('/exams', adminAuth, createExam);
 router.get('/exams', adminAuth, getExams);
 router.put('/exams/:id', adminAuth, updateExam);
+router.post('/exams/:id/publish', adminAuth, publishExam);
 router.delete('/exams/:id', adminAuth, deleteExam);
 
 // Dashboard & Users
 router.get('/dashboard', adminAuth, getDashboardStats);
+router.get('/subjects-topics', adminAuth, getSubjectsAndTopics);
 router.get('/users', adminAuth, getUsers);
 
 // File Upload
