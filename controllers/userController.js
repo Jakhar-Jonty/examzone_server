@@ -2,6 +2,8 @@ import User from '../models/User.js';
 import ExamAttempt from '../models/ExamAttempt.js';
 import Exam from '../models/Exam.js';
 import Article from '../models/Article.js';
+import Question from '../models/Question.js';
+import SubjectTopic from '../models/SubjectTopic.js';
 
 export const getProfile = async (req, res) => {
   try {
@@ -57,14 +59,24 @@ export const getDashboardStats = async (req, res) => {
     const user = await User.findById(req.user._id);
     const now = new Date();
 
-    // Get available exams
+    // Get available exams from last 24 hours only
+    // MongoDB stores dates in UTC, comparisons are done in UTC
+    const last24Hours = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    
     const availableExams = await Exam.find({
       category: { $in: user.examPreparations },
       status: { $in: ['scheduled', 'active'] },
-      scheduledTime: { $lte: now },
-      expiresAt: { $gte: now }
+      scheduledTime: { 
+        $gte: last24Hours, // Within last 24 hours
+        $lte: now // Already started (or set to now for immediate availability)
+      },
+      $or: [
+        { expiresAt: { $gte: now } }, // Has expiration and not expired yet
+        { expiresAt: null }, // No expiration set (available indefinitely)
+        { expiresAt: { $exists: false } } // expiresAt field doesn't exist
+      ]
     })
-    .populate('questions', 'questionText marks')
+    .select('-questions') // Don't populate questions - only need count
     .sort({ scheduledTime: -1 })
     .limit(10);
 
@@ -85,11 +97,23 @@ export const getDashboardStats = async (req, res) => {
       };
     });
 
-    // Add attempt info to exams
+    // Get question counts for all exams in one query
+    const examIdsForCounts = availableExams.map(exam => exam._id);
+    const examQuestionCounts = await Exam.find({ _id: { $in: examIdsForCounts } })
+      .select('_id questions')
+      .lean();
+    
+    const questionCountMap = {};
+    examQuestionCounts.forEach(exam => {
+      questionCountMap[exam._id.toString()] = exam.questions?.length || 0;
+    });
+
+    // Add attempt info to exams and include question count
     const examsWithAttempts = availableExams.map(exam => {
       const attemptInfo = attemptMap[exam._id.toString()];
       return {
         ...exam.toObject(),
+        questions: questionCountMap[exam._id.toString()] || 0, // Just the count
         isAttempted: attemptInfo?.isCompleted || false,
         isPaused: attemptInfo?.isPaused || false,
         attemptId: attemptInfo?.attemptId || null
@@ -142,6 +166,158 @@ export const getDashboardStats = async (req, res) => {
       },
       recentArticles,
       subscriptionStatus: user.subscriptionStatus
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+export const getAllExams = async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id);
+    const now = new Date();
+    
+    // Get query parameters
+    const {
+      page = 1,
+      limit = 12,
+      search = '',
+      category = '',
+      startDate = '',
+      endDate = '',
+      language = '',
+      subject = '',
+      topic = '',
+      sortBy = 'scheduledTime',
+      sortOrder = 'desc'
+    } = req.query;
+
+    // Build query
+    const query = {
+      category: { $in: user.examPreparations },
+      status: { $in: ['scheduled', 'active'] },
+      scheduledTime: { $lte: now }, // Already started
+      $or: [
+        { expiresAt: { $gte: now } },
+        { expiresAt: null },
+        { expiresAt: { $exists: false } }
+      ]
+    };
+
+    // Search filter
+    if (search) {
+      query.title = { $regex: search, $options: 'i' };
+    }
+
+    // Category filter
+    if (category && user.examPreparations.includes(category)) {
+      query.category = category;
+    }
+
+    // Date range filter
+    if (startDate) {
+      query.scheduledTime = { ...query.scheduledTime, $gte: new Date(startDate) };
+    }
+    if (endDate) {
+      query.scheduledTime = {
+        ...query.scheduledTime,
+        $lte: new Date(new Date(endDate).getTime() + 24 * 60 * 60 * 1000 - 1) // End of day
+      };
+    }
+
+    // Language filter
+    if (language && ['Hindi', 'English', 'Both'].includes(language)) {
+      query.language = language;
+    }
+
+    // Subject and Topic filter - filter exams by questions' subject/topic
+    if (subject || topic) {
+      const questionQuery = {};
+      if (subject) {
+        questionQuery.subject = { $regex: subject, $options: 'i' };
+      }
+      if (topic) {
+        questionQuery.topic = { $regex: topic, $options: 'i' };
+      }
+      
+      // Find questions matching subject/topic
+      const matchingQuestions = await Question.find(questionQuery).select('_id');
+      const questionIds = matchingQuestions.map(q => q._id);
+      
+      // Filter exams that have at least one question matching the criteria
+      if (questionIds.length > 0) {
+        query.questions = { $in: questionIds };
+      } else {
+        // No matching questions, return empty result
+        query.questions = { $in: [] };
+      }
+    }
+
+    // Sort options
+    const sortOptions = {};
+    sortOptions[sortBy] = sortOrder === 'asc' ? 1 : -1;
+
+    // Get total count
+    const total = await Exam.countDocuments(query);
+
+    // Get exams with pagination - don't populate questions, only need count
+    // Explicitly include expiresAt field to ensure it's returned (even if null)
+    const exams = await Exam.find(query)
+      .select('-questions') // Exclude questions array to avoid loading
+      .select('+expiresAt') // Explicitly include expiresAt
+      .sort(sortOptions)
+      .limit(limit * 1)
+      .skip((page - 1) * limit);
+    
+    // Get question counts separately (more efficient)
+    const examIds = exams.map(exam => exam._id);
+    const examQuestionCounts = await Exam.find({ _id: { $in: examIds } })
+      .select('_id questions')
+      .lean();
+    
+    const questionCountMap = {};
+    examQuestionCounts.forEach(exam => {
+      questionCountMap[exam._id.toString()] = exam.questions?.length || 0;
+    });
+
+    // Get attempt information for each exam
+    const attempts = await ExamAttempt.find({
+      user: user._id,
+      exam: { $in: examIds }
+    }).select('exam isCompleted isPaused _id');
+
+    // Map attempts to exams
+    const attemptMap = {};
+    attempts.forEach(attempt => {
+      attemptMap[attempt.exam.toString()] = {
+        attemptId: attempt._id,
+        isCompleted: attempt.isCompleted,
+        isPaused: attempt.isPaused
+      };
+    });
+
+    // Add attempt info to exams and include question count
+    const examsWithAttempts = exams.map(exam => {
+      const attemptInfo = attemptMap[exam._id.toString()];
+      const examObj = exam.toObject();
+      return {
+        ...examObj,
+        expiresAt: examObj.expiresAt || null, // Ensure expiresAt is explicitly set (null if not set)
+        questions: questionCountMap[exam._id.toString()] || 0, // Just the count
+        isAttempted: attemptInfo?.isCompleted || false,
+        isPaused: attemptInfo?.isPaused || false,
+        attemptId: attemptInfo?.attemptId || null
+      };
+    });
+
+    res.json({
+      exams: examsWithAttempts,
+      pagination: {
+        currentPage: parseInt(page),
+        totalPages: Math.ceil(total / limit),
+        totalExams: total,
+        limit: parseInt(limit)
+      }
     });
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -269,6 +445,47 @@ export const getAnalytics = async (req, res) => {
         improvementRate
       }
     });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// Get subjects and topics for filtering (user-accessible)
+export const getSubjectsAndTopics = async (req, res) => {
+  try {
+    const { category } = req.query;
+    const query = {};
+    
+    if (category) {
+      query.category = category;
+    }
+
+    const subjectTopics = await SubjectTopic.find(query)
+      .sort({ usageCount: -1, lastUsed: -1 })
+      .limit(1000);
+
+    // Group by subject
+    const grouped = {};
+    subjectTopics.forEach(st => {
+      if (!grouped[st.subject]) {
+        grouped[st.subject] = {
+          subject: st.subject,
+          topics: [],
+          category: st.category
+        };
+      }
+      if (st.topic && !grouped[st.subject].topics.includes(st.topic)) {
+        grouped[st.subject].topics.push(st.topic);
+      }
+    });
+
+    // Convert to array and sort topics
+    const result = Object.values(grouped).map(item => ({
+      ...item,
+      topics: item.topics.sort()
+    }));
+
+    res.json({ subjectsAndTopics: result });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }

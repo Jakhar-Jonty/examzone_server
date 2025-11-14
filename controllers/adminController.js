@@ -277,13 +277,25 @@ export const createExam = async (req, res) => {
     let expiresAt;
     
     if (status === 'scheduled') {
-      // Auto-schedule: set to current time + 1 hour
-      scheduledDate = new Date(Date.now() + 60 * 60 * 1000);
-      expiresAt = new Date(scheduledDate.getTime() + 24 * 60 * 60 * 1000);
+      // Auto-schedule: set to current time to ensure immediate availability
+      scheduledDate = new Date(Date.now());
+      // Don't set expiration - exams stay available indefinitely
+      expiresAt = null;
     } else {
       // Draft: use provided scheduledTime or set to future date
-      scheduledDate = scheduledTime ? new Date(scheduledTime) : new Date(Date.now() + 24 * 60 * 60 * 1000);
-      expiresAt = new Date(scheduledDate.getTime() + 24 * 60 * 60 * 1000);
+      if (scheduledTime) {
+        // If it's already an ISO string (from frontend conversion), use it directly
+        if (typeof scheduledTime === 'string' && scheduledTime.includes('T') && scheduledTime.includes('Z')) {
+          scheduledDate = new Date(scheduledTime);
+        } else {
+          // Convert to Date - if it's ISO string, it will be parsed correctly
+          scheduledDate = new Date(scheduledTime);
+        }
+      } else {
+        scheduledDate = new Date(Date.now() + 24 * 60 * 60 * 1000);
+      }
+      // Don't set expiration for draft exams - they can be scheduled later
+      expiresAt = null;
     }
 
     const exam = new Exam({
@@ -355,9 +367,19 @@ export const updateExam = async (req, res) => {
     
     // Handle scheduledTime
     if (req.body.scheduledTime) {
-      const scheduledDate = new Date(req.body.scheduledTime);
+      // If it's already an ISO string (from frontend conversion), use it directly
+      // Otherwise, treat it as local time and convert properly
+      let scheduledDate;
+      if (typeof req.body.scheduledTime === 'string' && req.body.scheduledTime.includes('T') && req.body.scheduledTime.includes('Z')) {
+        // Already in ISO format with timezone
+        scheduledDate = new Date(req.body.scheduledTime);
+      } else {
+        // Convert to Date - if it's ISO string, it will be parsed correctly
+        scheduledDate = new Date(req.body.scheduledTime);
+      }
       exam.scheduledTime = scheduledDate;
-      exam.expiresAt = new Date(scheduledDate.getTime() + 24 * 60 * 60 * 1000);
+      // Don't set expiration - exams stay available indefinitely
+      exam.expiresAt = null;
     }
 
     // Recalculate totalMarks if questions changed

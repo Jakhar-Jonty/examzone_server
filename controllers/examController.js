@@ -22,14 +22,31 @@ export const getAvailableExams = async (req, res) => {
     const user = await User.findById(req.user._id);
     const now = new Date();
     
+    // Get available exams - exams that have started and not expired
+    // Account for IST timezone (UTC+5:30) - MongoDB stores in UTC
     const exams = await Exam.find({
       category: { $in: user.examPreparations },
       status: { $in: ['scheduled', 'active'] },
-      scheduledTime: { $lte: now },
-      expiresAt: { $gte: now }
+      scheduledTime: { $lte: now }, // Already started
+      $or: [
+        { expiresAt: { $gte: now } }, // Has expiration and not expired yet
+        { expiresAt: null }, // No expiration set (available indefinitely)
+        { expiresAt: { $exists: false } } // expiresAt field doesn't exist
+      ]
     })
-    .populate('questions', 'questionText marks')
+    .select('-questions') // Don't populate questions - only need count
     .sort({ scheduledTime: -1 });
+    
+    // Get question counts separately
+    const examIds = exams.map(exam => exam._id);
+    const examQuestionCounts = await Exam.find({ _id: { $in: examIds } })
+      .select('_id questions')
+      .lean();
+    
+    const questionCountMap = {};
+    examQuestionCounts.forEach(exam => {
+      questionCountMap[exam._id.toString()] = exam.questions?.length || 0;
+    });
 
     // Check if user has already attempted each exam
     const examsWithAttemptStatus = await Promise.all(
@@ -42,6 +59,7 @@ export const getAvailableExams = async (req, res) => {
         
         return {
           ...exam.toObject(),
+          questions: questionCountMap[exam._id.toString()] || 0, // Just the count
           isAttempted: !!attempt,
           attemptId: attempt?._id
         };
@@ -56,11 +74,30 @@ export const getAvailableExams = async (req, res) => {
 
 export const getExamDetails = async (req, res) => {
   try {
-    const exam = await Exam.findById(req.params.id)
-      .populate({
-        path: 'questions',
-        select: 'questionText questionTextHindi options optionsHindi marks questionImage language difficulty category subject topic'
-      });
+    // Only populate questions if explicitly requested (for when exam is started)
+    const includeQuestions = req.query.includeQuestions === 'true';
+    
+    let exam;
+    if (includeQuestions) {
+      exam = await Exam.findById(req.params.id)
+        .populate({
+          path: 'questions',
+          select: 'questionText questionTextHindi options optionsHindi marks questionImage language difficulty category subject topic'
+        });
+    } else {
+      // Don't populate questions - just get exam metadata
+      exam = await Exam.findById(req.params.id)
+        .select('-questions'); // Exclude questions array
+      
+      // Get question count in a single additional query
+      const examWithCount = await Exam.findById(req.params.id)
+        .select('questions')
+        .lean();
+      
+      // Convert to object and add question count
+      exam = exam.toObject();
+      exam.questions = examWithCount?.questions?.length || 0; // Just the count
+    }
     
     if (!exam) {
       return res.status(404).json({ message: 'Exam not found' });
@@ -69,13 +106,13 @@ export const getExamDetails = async (req, res) => {
     // Check for existing attempts
     const completedAttempt = await ExamAttempt.findOne({
       user: req.user._id,
-      exam: exam._id,
+      exam: req.params.id,
       isCompleted: true
     }).select('_id');
 
     const pausedAttempt = await ExamAttempt.findOne({
       user: req.user._id,
-      exam: exam._id,
+      exam: req.params.id,
       isCompleted: false,
       isPaused: true
     }).select('_id isPaused');
@@ -97,7 +134,12 @@ export const getExamDetails = async (req, res) => {
 export const startExam = async (req, res) => {
   try {
     const user = await User.findById(req.user._id);
-    const exam = await Exam.findById(req.params.id);
+    // Populate questions only when starting the exam
+    const exam = await Exam.findById(req.params.id)
+      .populate({
+        path: 'questions',
+        select: 'questionText questionTextHindi options optionsHindi correctAnswer explanation explanationHindi marks questionImage language difficulty category subject topic'
+      });
     
     if (!exam) {
       return res.status(404).json({ message: 'Exam not found' });
@@ -131,6 +173,7 @@ export const startExam = async (req, res) => {
     if (exam.scheduledTime > now) {
       return res.status(400).json({ message: 'Exam has not started yet' });
     }
+    // Only check expiration if expiresAt is set
     if (exam.expiresAt && exam.expiresAt < now) {
       return res.status(400).json({ message: 'Exam has expired' });
     }
@@ -201,7 +244,12 @@ export const startExam = async (req, res) => {
       }
     }
 
-    res.json({ attempt, isResumed: attempt.isPaused === false && attempt.lastResumedAt });
+    // Return exam with populated questions so frontend doesn't need to call getExamDetails again
+    res.json({ 
+      attempt, 
+      exam, // Include exam with populated questions
+      isResumed: attempt.isPaused === false && attempt.lastResumedAt 
+    });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
