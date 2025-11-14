@@ -68,19 +68,47 @@ export const getDashboardStats = async (req, res) => {
     .sort({ scheduledTime: -1 })
     .limit(10);
 
+    // Get attempt information for each exam
+    const examIds = availableExams.map(exam => exam._id);
+    const attempts = await ExamAttempt.find({
+      user: user._id,
+      exam: { $in: examIds }
+    }).select('exam isCompleted isPaused _id');
+
+    // Map attempts to exams
+    const attemptMap = {};
+    attempts.forEach(attempt => {
+      attemptMap[attempt.exam.toString()] = {
+        attemptId: attempt._id,
+        isCompleted: attempt.isCompleted,
+        isPaused: attempt.isPaused
+      };
+    });
+
+    // Add attempt info to exams
+    const examsWithAttempts = availableExams.map(exam => {
+      const attemptInfo = attemptMap[exam._id.toString()];
+      return {
+        ...exam.toObject(),
+        isAttempted: attemptInfo?.isCompleted || false,
+        isPaused: attemptInfo?.isPaused || false,
+        attemptId: attemptInfo?.attemptId || null
+      };
+    });
+
     // Get exam history stats
     const totalAttempts = await ExamAttempt.countDocuments({
       user: user._id,
       isCompleted: true
     });
 
-    const attempts = await ExamAttempt.find({
+    const completedAttempts = await ExamAttempt.find({
       user: user._id,
       isCompleted: true
     }).select('totalScore percentage');
 
-    const averageScore = attempts.length > 0
-      ? attempts.reduce((sum, a) => sum + a.percentage, 0) / attempts.length
+    const averageScore = completedAttempts.length > 0
+      ? completedAttempts.reduce((sum, a) => sum + a.percentage, 0) / completedAttempts.length
       : 0;
 
     // Get recent articles
@@ -106,7 +134,7 @@ export const getDashboardStats = async (req, res) => {
       : Math.max(0, 3 - user.weeklyExamsAttempted);
 
     res.json({
-      availableExams,
+      availableExams: examsWithAttempts,
       stats: {
         totalAttempts,
         averageScore: averageScore.toFixed(2),

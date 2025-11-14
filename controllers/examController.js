@@ -66,7 +66,29 @@ export const getExamDetails = async (req, res) => {
       return res.status(404).json({ message: 'Exam not found' });
     }
 
-    res.json({ exam });
+    // Check for existing attempts
+    const completedAttempt = await ExamAttempt.findOne({
+      user: req.user._id,
+      exam: exam._id,
+      isCompleted: true
+    }).select('_id');
+
+    const pausedAttempt = await ExamAttempt.findOne({
+      user: req.user._id,
+      exam: exam._id,
+      isCompleted: false,
+      isPaused: true
+    }).select('_id isPaused');
+
+    res.json({ 
+      exam,
+      attemptStatus: {
+        isCompleted: !!completedAttempt,
+        isPaused: !!pausedAttempt,
+        completedAttemptId: completedAttempt?._id,
+        pausedAttemptId: pausedAttempt?._id
+      }
+    });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -113,7 +135,22 @@ export const startExam = async (req, res) => {
       return res.status(400).json({ message: 'Exam has expired' });
     }
 
-    // Create or get existing attempt
+    // Check if already completed
+    const completedAttempt = await ExamAttempt.findOne({
+      user: user._id,
+      exam: exam._id,
+      isCompleted: true
+    });
+    
+    if (completedAttempt) {
+      return res.status(400).json({ 
+        message: 'Exam already completed',
+        attempt: completedAttempt,
+        isCompleted: true
+      });
+    }
+
+    // Create or get existing attempt (including paused)
     let attempt = await ExamAttempt.findOne({
       user: user._id,
       exam: exam._id,
@@ -141,7 +178,7 @@ export const startExam = async (req, res) => {
       });
       await attempt.save();
 
-      // Increment weekly count
+      // Increment weekly count only for new attempts
       updatedUser.weeklyExamsAttempted += 1;
       await updatedUser.save();
       
@@ -151,9 +188,20 @@ export const startExam = async (req, res) => {
           path: 'answers.question',
           select: 'questionText questionTextHindi options optionsHindi correctAnswer explanation explanationHindi marks questionImage language'
         });
+    } else if (attempt.isPaused) {
+      // Resume paused exam - calculate paused duration
+      const now = new Date();
+      if (attempt.pausedAt) {
+        const pausedTime = Math.floor((now - attempt.pausedAt) / 1000);
+        attempt.pausedDuration = (attempt.pausedDuration || 0) + pausedTime;
+        attempt.pausedAt = null;
+        attempt.isPaused = false;
+        attempt.lastResumedAt = now;
+        await attempt.save();
+      }
     }
 
-    res.json({ attempt });
+    res.json({ attempt, isResumed: attempt.isPaused === false && attempt.lastResumedAt });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -170,6 +218,10 @@ export const saveAnswers = async (req, res) => {
 
     if (attempt.isCompleted) {
       return res.status(400).json({ message: 'Exam already submitted' });
+    }
+
+    if (attempt.isPaused) {
+      return res.status(400).json({ message: 'Exam is paused. Please resume first.' });
     }
 
     if (attempt.user.toString() !== req.user._id.toString()) {
@@ -200,6 +252,10 @@ export const submitExam = async (req, res) => {
 
     if (attempt.isCompleted) {
       return res.status(400).json({ message: 'Exam already submitted' });
+    }
+
+    if (attempt.isPaused) {
+      return res.status(400).json({ message: 'Exam is paused. Please resume first.' });
     }
 
     if (attempt.user.toString() !== req.user._id.toString()) {
@@ -257,6 +313,44 @@ export const submitExam = async (req, res) => {
         unattempted,
         timeTaken
       }
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+export const pauseExam = async (req, res) => {
+  try {
+    const attempt = await ExamAttempt.findById(req.params.attemptId);
+    
+    if (!attempt) {
+      return res.status(404).json({ message: 'Attempt not found' });
+    }
+
+    if (attempt.isCompleted) {
+      return res.status(400).json({ message: 'Exam already submitted' });
+    }
+
+    if (attempt.isPaused) {
+      return res.status(400).json({ message: 'Exam is already paused' });
+    }
+
+    if (attempt.user.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ message: 'Unauthorized' });
+    }
+
+    // Save answers before pausing
+    if (req.body.answers) {
+      attempt.answers = req.body.answers;
+    }
+
+    attempt.isPaused = true;
+    attempt.pausedAt = new Date();
+    await attempt.save();
+
+    res.json({ 
+      message: 'Exam paused successfully',
+      attempt 
     });
   } catch (error) {
     res.status(500).json({ message: error.message });
