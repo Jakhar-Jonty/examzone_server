@@ -43,6 +43,16 @@ const userSchema = new mongoose.Schema({
   subscriptionExpiry: { type: Date },
   weeklyExamsAttempted: { type: Number, default: 0 },
   lastWeekReset: { type: Date, default: Date.now },
+  // Study Streak fields
+  currentStreak: { type: Number, default: 0 },
+  longestStreak: { type: Number, default: 0 },
+  lastStudyDate: { type: Date },
+  totalStudyDays: { type: Number, default: 0 },
+  badges: [{
+    badgeId: { type: String, required: true },
+    badgeName: { type: String, required: true },
+    earnedAt: { type: Date, default: Date.now }
+  }],
   isVerified: { type: Boolean, default: false },
   createdAt: { type: Date, default: Date.now }
 });

@@ -30,6 +30,7 @@ const examAttemptSchema = new mongoose.Schema({
   pausedAt: { type: Date },
   pausedDuration: { type: Number, default: 0 }, // Total paused time in seconds
   lastResumedAt: { type: Date },
+  attemptNumber: { type: Number, required: true, default: 1 },
   createdAt: { type: Date, default: Date.now }
 });
 

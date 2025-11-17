@@ -240,7 +240,7 @@ export const saveAIGuestions = async (req, res) => {
 // Exam Management
 export const createExam = async (req, res) => {
   try {
-    const { title, category, scheduledTime, duration, questions, totalMarks, selectionMethod, subjects, questionCount, language = 'English', status = 'draft' } = req.body;
+    const { title, category, scheduledTime, duration, questions, totalMarks, selectionMethod, subjects, questionCount, language = 'English', status = 'draft', allowReattempts = true, maxAttempts = 3 } = req.body;
 
     // Validate language
     if (language && !['Hindi', 'English', 'Both'].includes(language)) {
@@ -308,6 +308,8 @@ export const createExam = async (req, res) => {
       language: language || 'English',
       expiresAt,
       status: status,
+      allowReattempts: allowReattempts !== undefined ? allowReattempts : true,
+      maxAttempts: maxAttempts || 3,
       createdBy: req.user._id
     });
 
@@ -364,6 +366,8 @@ export const updateExam = async (req, res) => {
     if (req.body.language) exam.language = req.body.language;
     if (req.body.questions) exam.questions = req.body.questions;
     if (req.body.totalMarks) exam.totalMarks = req.body.totalMarks;
+    if (req.body.allowReattempts !== undefined) exam.allowReattempts = req.body.allowReattempts;
+    if (req.body.maxAttempts !== undefined) exam.maxAttempts = req.body.maxAttempts;
     
     // Handle scheduledTime
     if (req.body.scheduledTime) {

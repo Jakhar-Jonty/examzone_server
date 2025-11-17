@@ -4,6 +4,7 @@ import Exam from '../models/Exam.js';
 import Article from '../models/Article.js';
 import Question from '../models/Question.js';
 import SubjectTopic from '../models/SubjectTopic.js';
+import SavedQuestion from '../models/SavedQuestion.js';
 
 export const getProfile = async (req, res) => {
   try {
@@ -38,10 +39,11 @@ export const getExamHistory = async (req, res) => {
     const query = { user: req.user._id, isCompleted: true };
 
     const attempts = await ExamAttempt.find(query)
+      .select('_id totalScore percentage correctAnswers incorrectAnswers unattempted timeTaken attemptNumber endTime createdAt exam')
       .populate({
         path: 'exam',
         match: category ? { category } : {},
-        select: 'title category scheduledTime'
+        select: 'title category scheduledTime totalMarks'
       })
       .sort({ createdAt: -1 });
 
@@ -157,6 +159,10 @@ export const getDashboardStats = async (req, res) => {
       ? 'Unlimited'
       : Math.max(0, 3 - user.weeklyExamsAttempted);
 
+    // Get streak information
+    const { getStreakInfo } = await import('../utils/streakManager.js');
+    const streakInfo = await getStreakInfo(user._id);
+
     res.json({
       availableExams: examsWithAttempts,
       stats: {
@@ -165,7 +171,14 @@ export const getDashboardStats = async (req, res) => {
         weeklyExamsRemaining
       },
       recentArticles,
-      subscriptionStatus: user.subscriptionStatus
+      subscriptionStatus: user.subscriptionStatus,
+      streak: streakInfo || {
+        currentStreak: 0,
+        longestStreak: 0,
+        lastStudyDate: null,
+        totalStudyDays: 0,
+        badges: []
+      }
     });
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -486,6 +499,217 @@ export const getSubjectsAndTopics = async (req, res) => {
     }));
 
     res.json({ subjectsAndTopics: result });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// Save a question to user's question bank
+export const saveQuestion = async (req, res) => {
+  try {
+    const { questionId, notes, tags, status } = req.body;
+    const userId = req.user._id;
+
+    // Check if question exists
+    const question = await Question.findById(questionId);
+    if (!question) {
+      return res.status(404).json({ message: 'Question not found' });
+    }
+
+    // Check if already saved
+    const existing = await SavedQuestion.findOne({ user: userId, question: questionId });
+    if (existing) {
+      return res.status(400).json({ message: 'Question already saved' });
+    }
+
+    // Save the question
+    const savedQuestion = new SavedQuestion({
+      user: userId,
+      question: questionId,
+      notes: notes || '',
+      tags: tags || [],
+      status: status || 'needs-review'
+    });
+
+    await savedQuestion.save();
+
+    // Populate question details
+    await savedQuestion.populate('question', 'questionText questionTextHindi options optionsHindi correctAnswer explanation explanationHindi marks questionImage language difficulty category subject topic');
+
+    res.json({
+      message: 'Question saved successfully',
+      savedQuestion
+    });
+  } catch (error) {
+    if (error.code === 11000) {
+      return res.status(400).json({ message: 'Question already saved' });
+    }
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// Unsave a question
+export const unsaveQuestion = async (req, res) => {
+  try {
+    const { questionId } = req.params;
+    const userId = req.user._id;
+
+    const deleted = await SavedQuestion.findOneAndDelete({
+      user: userId,
+      question: questionId
+    });
+
+    if (!deleted) {
+      return res.status(404).json({ message: 'Saved question not found' });
+    }
+
+    res.json({ message: 'Question removed from question bank' });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// Get all saved questions for a user
+export const getSavedQuestions = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const {
+      page = 1,
+      limit = 20,
+      search = '',
+      category = '',
+      subject = '',
+      topic = '',
+      status = '',
+      sortBy = 'savedAt',
+      sortOrder = 'desc'
+    } = req.query;
+
+    // Build query
+    const query = { user: userId };
+
+    // Status filter
+    if (status && ['needs-review', 'mastered', 'reviewed'].includes(status)) {
+      query.status = status;
+    }
+
+    // Get saved questions with pagination
+    const savedQuestions = await SavedQuestion.find(query)
+      .populate({
+        path: 'question',
+        select: 'questionText questionTextHindi options optionsHindi correctAnswer explanation explanationHindi marks questionImage language difficulty category subject topic'
+      })
+      .sort({ [sortBy]: sortOrder === 'asc' ? 1 : -1 })
+      .limit(limit * 1)
+      .skip((page - 1) * limit);
+
+    // Filter by category, subject, topic, and search
+    let filtered = savedQuestions.filter(sq => {
+      const q = sq.question;
+      if (!q) return false;
+
+      // Category filter
+      if (category && q.category !== category) return false;
+
+      // Subject filter
+      if (subject && q.subject?.toLowerCase() !== subject.toLowerCase()) return false;
+
+      // Topic filter
+      if (topic && q.topic?.toLowerCase() !== topic.toLowerCase()) return false;
+
+      // Search filter
+      if (search) {
+        const searchLower = search.toLowerCase();
+        const matchesText = q.questionText?.toLowerCase().includes(searchLower) ||
+                           q.questionTextHindi?.toLowerCase().includes(searchLower) ||
+                           sq.notes?.toLowerCase().includes(searchLower);
+        if (!matchesText) return false;
+      }
+
+      return true;
+    });
+
+    // Get total count (after filtering)
+    const total = await SavedQuestion.countDocuments({ user: userId });
+
+    res.json({
+      savedQuestions: filtered.map(sq => ({
+        _id: sq._id,
+        question: sq.question,
+        savedAt: sq.savedAt,
+        notes: sq.notes,
+        tags: sq.tags,
+        status: sq.status
+      })),
+      pagination: {
+        currentPage: parseInt(page),
+        totalPages: Math.ceil(total / limit),
+        totalQuestions: total,
+        limit: parseInt(limit)
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// Update saved question (notes, tags, status)
+export const updateSavedQuestion = async (req, res) => {
+  try {
+    const { savedQuestionId } = req.params;
+    const { notes, tags, status } = req.body;
+    const userId = req.user._id;
+
+    const updateData = {};
+    if (notes !== undefined) updateData.notes = notes;
+    if (tags !== undefined) updateData.tags = tags;
+    if (status && ['needs-review', 'mastered', 'reviewed'].includes(status)) {
+      updateData.status = status;
+    }
+
+    const savedQuestion = await SavedQuestion.findOneAndUpdate(
+      { _id: savedQuestionId, user: userId },
+      updateData,
+      { new: true }
+    ).populate('question', 'questionText questionTextHindi options optionsHindi correctAnswer explanation explanationHindi marks questionImage language difficulty category subject topic');
+
+    if (!savedQuestion) {
+      return res.status(404).json({ message: 'Saved question not found' });
+    }
+
+    res.json({
+      message: 'Saved question updated successfully',
+      savedQuestion
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// Check if questions are saved (for bulk check)
+export const checkSavedQuestions = async (req, res) => {
+  try {
+    const { questionIds } = req.body; // Array of question IDs
+    const userId = req.user._id;
+
+    if (!Array.isArray(questionIds)) {
+      return res.status(400).json({ message: 'questionIds must be an array' });
+    }
+
+    const savedQuestions = await SavedQuestion.find({
+      user: userId,
+      question: { $in: questionIds }
+    }).select('question');
+
+    const savedQuestionIds = savedQuestions.map(sq => sq.question.toString());
+
+    // Return a map of questionId -> isSaved
+    const savedMap = {};
+    questionIds.forEach(id => {
+      savedMap[id] = savedQuestionIds.includes(id.toString());
+    });
+
+    res.json({ savedMap });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }

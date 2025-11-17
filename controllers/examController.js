@@ -103,28 +103,64 @@ export const getExamDetails = async (req, res) => {
       return res.status(404).json({ message: 'Exam not found' });
     }
 
-    // Check for existing attempts
-    const completedAttempt = await ExamAttempt.findOne({
+    // Get all completed attempts for this exam
+    const completedAttempts = await ExamAttempt.find({
       user: req.user._id,
       exam: req.params.id,
       isCompleted: true
-    }).select('_id');
+    })
+    .select('_id totalScore percentage attemptNumber endTime createdAt')
+    .sort({ attemptNumber: -1 })
+    .lean();
 
+    // Get latest attempt
+    const latestAttempt = completedAttempts.length > 0 ? completedAttempts[0] : null;
+    
+    // Calculate best score
+    let bestScore = null;
+    let bestAttemptId = null;
+    if (completedAttempts.length > 0) {
+      const bestAttempt = completedAttempts.reduce((best, current) => 
+        current.totalScore > best.totalScore ? current : best
+      );
+      bestScore = bestAttempt.totalScore;
+      bestAttemptId = bestAttempt._id;
+    }
+
+    // Get paused attempt
     const pausedAttempt = await ExamAttempt.findOne({
       user: req.user._id,
       exam: req.params.id,
       isCompleted: false,
       isPaused: true
-    }).select('_id isPaused');
+    }).select('_id isPaused attemptNumber');
+
+    // Calculate attempt count
+    const attemptCount = completedAttempts.length;
+    const canReattempt = exam.allowReattempts && attemptCount < exam.maxAttempts;
 
     res.json({ 
       exam,
       attemptStatus: {
-        isCompleted: !!completedAttempt,
+        isCompleted: attemptCount > 0,
         isPaused: !!pausedAttempt,
-        completedAttemptId: completedAttempt?._id,
-        pausedAttemptId: pausedAttempt?._id
-      }
+        completedAttemptId: latestAttempt?._id,
+        pausedAttemptId: pausedAttempt?._id,
+        attemptCount,
+        canReattempt,
+        maxAttempts: exam.maxAttempts,
+        bestScore,
+        bestAttemptId,
+        latestScore: latestAttempt?.totalScore || null,
+        latestPercentage: latestAttempt?.percentage || null
+      },
+      attemptHistory: completedAttempts.map(attempt => ({
+        _id: attempt._id,
+        attemptNumber: attempt.attemptNumber,
+        score: attempt.totalScore,
+        percentage: attempt.percentage,
+        date: attempt.endTime || attempt.createdAt
+      }))
     });
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -145,15 +181,28 @@ export const startExam = async (req, res) => {
       return res.status(404).json({ message: 'Exam not found' });
     }
 
-    // Check if already attempted
-    const existingAttempt = await ExamAttempt.findOne({
+    // Check re-attempt logic
+    const completedAttempts = await ExamAttempt.find({
       user: user._id,
       exam: exam._id,
       isCompleted: true
-    });
+    }).select('_id attemptNumber');
+
+    const attemptCount = completedAttempts.length;
     
-    if (existingAttempt) {
-      return res.status(400).json({ message: 'Exam already attempted' });
+    // Check if re-attempts are allowed
+    if (attemptCount > 0) {
+      if (!exam.allowReattempts) {
+        return res.status(400).json({ 
+          message: 'Re-attempts are not allowed for this exam' 
+        });
+      }
+      
+      if (attemptCount >= exam.maxAttempts) {
+        return res.status(400).json({ 
+          message: `Maximum attempts (${exam.maxAttempts}) reached for this exam` 
+        });
+      }
     }
 
     // Check subscription and weekly limit
@@ -178,21 +227,6 @@ export const startExam = async (req, res) => {
       return res.status(400).json({ message: 'Exam has expired' });
     }
 
-    // Check if already completed
-    const completedAttempt = await ExamAttempt.findOne({
-      user: user._id,
-      exam: exam._id,
-      isCompleted: true
-    });
-    
-    if (completedAttempt) {
-      return res.status(400).json({ 
-        message: 'Exam already completed',
-        attempt: completedAttempt,
-        isCompleted: true
-      });
-    }
-
     // Create or get existing attempt (including paused)
     let attempt = await ExamAttempt.findOne({
       user: user._id,
@@ -205,6 +239,9 @@ export const startExam = async (req, res) => {
     });
 
     if (!attempt) {
+      // Calculate next attempt number
+      const nextAttemptNumber = attemptCount + 1;
+      
       // Initialize answers array
       const answers = exam.questions.map(question => ({
         question: question,
@@ -217,7 +254,8 @@ export const startExam = async (req, res) => {
         user: user._id,
         exam: exam._id,
         answers,
-        startTime: new Date()
+        startTime: new Date(),
+        attemptNumber: nextAttemptNumber
       });
       await attempt.save();
 
@@ -349,6 +387,10 @@ export const submitExam = async (req, res) => {
     
     await attempt.save();
 
+    // Update study streak
+    const { updateStudyStreak } = await import('../utils/streakManager.js');
+    const streakUpdate = await updateStudyStreak(attempt.user);
+
     res.json({ 
       message: 'Exam submitted successfully',
       result: {
@@ -360,7 +402,8 @@ export const submitExam = async (req, res) => {
         incorrectAnswers,
         unattempted,
         timeTaken
-      }
+      },
+      streak: streakUpdate
     });
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -422,7 +465,21 @@ export const getResult = async (req, res) => {
       return res.status(403).json({ message: 'Unauthorized' });
     }
 
-    res.json({ result: attempt });
+    // Get all previous attempts for this exam to show comparison
+    const previousAttempts = await ExamAttempt.find({
+      user: attempt.user,
+      exam: attempt.exam._id,
+      isCompleted: true,
+      attemptNumber: { $lt: attempt.attemptNumber }
+    })
+      .select('_id totalScore percentage correctAnswers incorrectAnswers unattempted attemptNumber endTime createdAt')
+      .sort({ attemptNumber: -1 })
+      .lean();
+
+    res.json({ 
+      result: attempt,
+      previousAttempts: previousAttempts || []
+    });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }

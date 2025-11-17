@@ -25,6 +25,8 @@ const examSchema = new mongoose.Schema({
     default: 'draft' 
   },
   expiresAt: { type: Date },
+  allowReattempts: { type: Boolean, default: true },
+  maxAttempts: { type: Number, default: 3 },
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   createdAt: { type: Date, default: Date.now }
 });
