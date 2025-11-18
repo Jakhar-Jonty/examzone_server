@@ -27,9 +27,16 @@ const examSchema = new mongoose.Schema({
   expiresAt: { type: Date },
   allowReattempts: { type: Boolean, default: true },
   maxAttempts: { type: Number, default: 3 },
+  allowTabSwitch: { type: Boolean, default: false }, // If false, auto-submit on tab switch
+  deleted: { type: Boolean, default: false },
+  deletedAt: { type: Date },
+  deletedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   createdAt: { type: Date, default: Date.now }
 });
+
+// Add index for soft delete queries
+examSchema.index({ deleted: 1 });
 
 // Auto-update status based on time
 examSchema.pre('save', function(next) {

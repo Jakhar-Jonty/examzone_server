@@ -240,7 +240,7 @@ export const saveAIGuestions = async (req, res) => {
 // Exam Management
 export const createExam = async (req, res) => {
   try {
-    const { title, category, scheduledTime, duration, questions, totalMarks, selectionMethod, subjects, questionCount, language = 'English', status = 'draft', allowReattempts = true, maxAttempts = 3 } = req.body;
+    const { title, category, scheduledTime, duration, questions, totalMarks, selectionMethod, subjects, questionCount, language = 'English', status = 'draft', allowReattempts = true, maxAttempts = 3, allowTabSwitch = false } = req.body;
 
     // Validate language
     if (language && !['Hindi', 'English', 'Both'].includes(language)) {
@@ -310,6 +310,7 @@ export const createExam = async (req, res) => {
       status: status,
       allowReattempts: allowReattempts !== undefined ? allowReattempts : true,
       maxAttempts: maxAttempts || 3,
+      allowTabSwitch: allowTabSwitch !== undefined ? allowTabSwitch : false,
       createdBy: req.user._id
     });
 
@@ -330,15 +331,25 @@ export const createExam = async (req, res) => {
 
 export const getExams = async (req, res) => {
   try {
-    const { status, category } = req.query;
+    const { status, category, includeDeleted } = req.query;
     const query = {};
 
     if (status) query.status = status;
     if (category) query.category = category;
+    
+    // Filter out soft-deleted exams by default
+    // Include exams where deleted field doesn't exist (for backward compatibility)
+    if (includeDeleted !== 'true') {
+      query.$or = [
+        { deleted: false },
+        { deleted: { $exists: false } }
+      ];
+    }
 
     const exams = await Exam.find(query)
       .populate('questions', 'questionText marks')
       .populate('createdBy', 'name')
+      .populate('deletedBy', 'name')
       .sort({ createdAt: -1 });
 
     res.json({ exams });
@@ -368,6 +379,7 @@ export const updateExam = async (req, res) => {
     if (req.body.totalMarks) exam.totalMarks = req.body.totalMarks;
     if (req.body.allowReattempts !== undefined) exam.allowReattempts = req.body.allowReattempts;
     if (req.body.maxAttempts !== undefined) exam.maxAttempts = req.body.maxAttempts;
+    if (req.body.allowTabSwitch !== undefined) exam.allowTabSwitch = req.body.allowTabSwitch;
     
     // Handle scheduledTime
     if (req.body.scheduledTime) {
@@ -410,8 +422,12 @@ export const publishExam = async (req, res) => {
       return res.status(404).json({ message: 'Exam not found' });
     }
 
-    if (exam.status !== 'draft') {
-      return res.status(400).json({ message: 'Can only publish draft exams' });
+    if (exam.deleted) {
+      return res.status(400).json({ message: 'Cannot publish a deleted exam. Please restore it first.' });
+    }
+
+    if (exam.status === 'active' || exam.status === 'scheduled') {
+      return res.status(400).json({ message: 'Exam is already published' });
     }
 
     if (!exam.scheduledTime) {
@@ -431,6 +447,35 @@ export const publishExam = async (req, res) => {
   }
 };
 
+export const unpublishExam = async (req, res) => {
+  try {
+    const exam = await Exam.findById(req.params.id);
+    
+    if (!exam) {
+      return res.status(404).json({ message: 'Exam not found' });
+    }
+
+    if (exam.deleted) {
+      return res.status(400).json({ message: 'Cannot unpublish a deleted exam. Please restore it first.' });
+    }
+
+    if (exam.status === 'draft') {
+      return res.status(400).json({ message: 'Exam is already in draft status' });
+    }
+
+    // Change status back to draft
+    exam.status = 'draft';
+    await exam.save();
+
+    const populatedExam = await Exam.findById(exam._id)
+      .populate('questions', 'questionText questionTextHindi options optionsHindi marks questionImage language difficulty category subject topic');
+
+    res.json({ message: 'Exam unpublished successfully', exam: populatedExam });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
 export const deleteExam = async (req, res) => {
   try {
     const exam = await Exam.findById(req.params.id);
@@ -439,13 +484,44 @@ export const deleteExam = async (req, res) => {
       return res.status(404).json({ message: 'Exam not found' });
     }
 
-    if (exam.status !== 'draft') {
-      return res.status(400).json({ message: 'Can only delete draft exams' });
+    if (exam.deleted) {
+      return res.status(400).json({ message: 'Exam is already deleted' });
     }
 
-    await exam.deleteOne();
+    // Soft delete - mark as deleted instead of removing
+    exam.deleted = true;
+    exam.deletedAt = new Date();
+    exam.deletedBy = req.user._id;
+    await exam.save();
 
     res.json({ message: 'Exam deleted successfully' });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+export const restoreExam = async (req, res) => {
+  try {
+    const exam = await Exam.findById(req.params.id);
+    
+    if (!exam) {
+      return res.status(404).json({ message: 'Exam not found' });
+    }
+
+    if (!exam.deleted) {
+      return res.status(400).json({ message: 'Exam is not deleted' });
+    }
+
+    // Restore exam
+    exam.deleted = false;
+    exam.deletedAt = null;
+    exam.deletedBy = null;
+    await exam.save();
+
+    const populatedExam = await Exam.findById(exam._id)
+      .populate('questions', 'questionText questionTextHindi options optionsHindi marks questionImage language difficulty category subject topic');
+
+    res.json({ message: 'Exam restored successfully', exam: populatedExam });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }

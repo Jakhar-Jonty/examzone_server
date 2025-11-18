@@ -13,7 +13,9 @@ import {
   getExams,
   updateExam,
   publishExam,
+  unpublishExam,
   deleteExam,
+  restoreExam,
   getDashboardStats,
   getSubjectsAndTopics,
   getUsers,
@@ -53,7 +55,9 @@ router.post('/exams', adminAuth, createExam);
 router.get('/exams', adminAuth, getExams);
 router.put('/exams/:id', adminAuth, updateExam);
 router.post('/exams/:id/publish', adminAuth, publishExam);
+router.post('/exams/:id/unpublish', adminAuth, unpublishExam);
 router.delete('/exams/:id', adminAuth, deleteExam);
+router.post('/exams/:id/restore', adminAuth, restoreExam);
 
 // Dashboard & Users
 router.get('/dashboard', adminAuth, getDashboardStats);

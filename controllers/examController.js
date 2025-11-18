@@ -29,9 +29,17 @@ export const getAvailableExams = async (req, res) => {
       status: { $in: ['scheduled', 'active'] },
       scheduledTime: { $lte: now }, // Already started
       $or: [
-        { expiresAt: { $gte: now } }, // Has expiration and not expired yet
-        { expiresAt: null }, // No expiration set (available indefinitely)
-        { expiresAt: { $exists: false } } // expiresAt field doesn't exist
+        { deleted: false },
+        { deleted: { $exists: false } }
+      ],
+      $and: [
+        {
+          $or: [
+            { expiresAt: { $gte: now } }, // Has expiration and not expired yet
+            { expiresAt: null }, // No expiration set (available indefinitely)
+            { expiresAt: { $exists: false } } // expiresAt field doesn't exist
+          ]
+        }
       ]
     })
     .select('-questions') // Don't populate questions - only need count
@@ -79,14 +87,26 @@ export const getExamDetails = async (req, res) => {
     
     let exam;
     if (includeQuestions) {
-      exam = await Exam.findById(req.params.id)
+      exam = await Exam.findOne({
+        _id: req.params.id,
+        $or: [
+          { deleted: false },
+          { deleted: { $exists: false } }
+        ]
+      })
         .populate({
           path: 'questions',
           select: 'questionText questionTextHindi options optionsHindi marks questionImage language difficulty category subject topic'
         });
     } else {
       // Don't populate questions - just get exam metadata
-      exam = await Exam.findById(req.params.id)
+      exam = await Exam.findOne({
+        _id: req.params.id,
+        $or: [
+          { deleted: false },
+          { deleted: { $exists: false } }
+        ]
+      })
         .select('-questions'); // Exclude questions array
       
       // Get question count in a single additional query
@@ -171,14 +191,20 @@ export const startExam = async (req, res) => {
   try {
     const user = await User.findById(req.user._id);
     // Populate questions only when starting the exam
-    const exam = await Exam.findById(req.params.id)
+    const exam = await Exam.findOne({
+      _id: req.params.id,
+      $or: [
+        { deleted: false },
+        { deleted: { $exists: false } }
+      ]
+    })
       .populate({
         path: 'questions',
         select: 'questionText questionTextHindi options optionsHindi correctAnswer explanation explanationHindi marks questionImage language difficulty category subject topic'
       });
     
     if (!exam) {
-      return res.status(404).json({ message: 'Exam not found' });
+      return res.status(404).json({ message: 'Exam not found or has been deleted' });
     }
 
     // Check re-attempt logic
@@ -346,6 +372,18 @@ export const submitExam = async (req, res) => {
 
     if (attempt.user.toString() !== req.user._id.toString()) {
       return res.status(403).json({ message: 'Unauthorized' });
+    }
+
+    // If answers are provided in request body, update them before submitting
+    // This ensures answers are saved even if saveAnswers() wasn't called first
+    if (req.body.answers && Array.isArray(req.body.answers)) {
+      attempt.answers = req.body.answers;
+      await attempt.save();
+      // Re-populate after saving
+      await attempt.populate({
+        path: 'answers.question',
+        select: 'questionText questionTextHindi options optionsHindi correctAnswer explanation explanationHindi marks questionImage language'
+      });
     }
 
     // Calculate results

@@ -72,10 +72,20 @@ export const getDashboardStats = async (req, res) => {
         $gte: last24Hours, // Within last 24 hours
         $lte: now // Already started (or set to now for immediate availability)
       },
-      $or: [
-        { expiresAt: { $gte: now } }, // Has expiration and not expired yet
-        { expiresAt: null }, // No expiration set (available indefinitely)
-        { expiresAt: { $exists: false } } // expiresAt field doesn't exist
+      $and: [
+        {
+          $or: [
+            { deleted: false },
+            { deleted: { $exists: false } }
+          ]
+        },
+        {
+          $or: [
+            { expiresAt: { $gte: now } }, // Has expiration and not expired yet
+            { expiresAt: null }, // No expiration set (available indefinitely)
+            { expiresAt: { $exists: false } } // expiresAt field doesn't exist
+          ]
+        }
       ]
     })
     .select('-questions') // Don't populate questions - only need count
@@ -275,6 +285,12 @@ export const getAllExams = async (req, res) => {
 
     // Get exams with pagination - don't populate questions, only need count
     // Explicitly include expiresAt field to ensure it's returned (even if null)
+    // Add deleted filter to query
+    query.$or = [
+      { deleted: false },
+      { deleted: { $exists: false } }
+    ];
+    
     const exams = await Exam.find(query)
       .select('-questions') // Exclude questions array to avoid loading
       .select('+expiresAt') // Explicitly include expiresAt
