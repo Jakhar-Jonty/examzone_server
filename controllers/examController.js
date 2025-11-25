@@ -392,18 +392,90 @@ export const submitExam = async (req, res) => {
     let incorrectAnswers = 0;
     let unattempted = 0;
 
+    // Get question marks from exam (if custom marks are set) or use question default marks
+    // Handle both Map and Object formats - normalize all keys to strings
+    let examQuestionMarks = {};
+    if (attempt.exam.questionMarks) {
+      if (attempt.exam.questionMarks instanceof Map) {
+        // Convert Map to object with string keys
+        attempt.exam.questionMarks.forEach((value, key) => {
+          examQuestionMarks[key.toString()] = parseFloat(value) || value;
+        });
+      } else {
+        // It's already an object - Mongoose Maps are often returned as objects
+        const qm = attempt.exam.questionMarks;
+        // Convert all keys to strings for consistent lookup
+        for (const key in qm) {
+          if (qm.hasOwnProperty(key)) {
+            // Convert key to string (handles both ObjectId and string keys)
+            const keyStr = key.toString();
+            examQuestionMarks[keyStr] = parseFloat(qm[key]) || qm[key];
+          }
+        }
+      }
+    }
+    
+    // Calculate marks per question from exam (priority: use exam's marks per question)
+    // This is calculated as totalMarks / number of questions
+    const examMarksPerQuestion = attempt.exam.totalMarks && attempt.exam.questions && attempt.exam.questions.length > 0
+      ? attempt.exam.totalMarks / attempt.exam.questions.length
+      : null;
+    
     attempt.answers.forEach(answer => {
       const question = answer.question;
+      const questionId = question._id.toString();
+      
+      // Look up marks - all keys are normalized to strings
+      let questionMarks = examQuestionMarks[questionId];
+      
+      // If not found, try to find by comparing all keys (in case of ObjectId mismatch)
+      if (questionMarks === undefined) {
+        for (const key in examQuestionMarks) {
+          // Compare both keys as strings
+          if (key.toString() === questionId || key === questionId) {
+            questionMarks = examQuestionMarks[key];
+            break;
+          }
+        }
+      }
+      
+      // Convert to number if it's a string
+      if (questionMarks !== undefined) {
+        questionMarks = parseFloat(questionMarks);
+      }
+      
+      // Priority order for marks:
+      // 1. exam.questionMarks[questionId] (explicit per-question marks)
+      // 2. exam.totalMarks / exam.questions.length (marks per question for the exam) - THIS IS THE PRIORITY
+      // 3. question.marks (from Question collection)
+      // 4. 1 (default)
+      if (questionMarks === undefined || isNaN(questionMarks)) {
+        if (examMarksPerQuestion !== null && !isNaN(examMarksPerQuestion)) {
+          // Use exam's marks per question (calculated from totalMarks / questionCount)
+          questionMarks = examMarksPerQuestion;
+        } else {
+          // Fallback to question's default marks
+          questionMarks = question.marks || 1;
+        }
+      }
+      
       if (!answer.selectedAnswer) {
         unattempted++;
+        answer.marksObtained = 0;
       } else if (answer.selectedAnswer === question.correctAnswer) {
         answer.isCorrect = true;
-        answer.marksObtained = question.marks || 1;
+        answer.marksObtained = questionMarks;
         totalScore += answer.marksObtained;
         correctAnswers++;
       } else {
         answer.isCorrect = false;
-        answer.marksObtained = 0;
+        // Apply negative marking if enabled
+        if (attempt.exam.enableNegativeMarking && attempt.exam.negativeMarksPerQuestion) {
+          answer.marksObtained = -Math.abs(parseFloat(attempt.exam.negativeMarksPerQuestion));
+          totalScore += answer.marksObtained;
+        } else {
+          answer.marksObtained = 0;
+        }
         incorrectAnswers++;
       }
     });

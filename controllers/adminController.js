@@ -240,7 +240,7 @@ export const saveAIGuestions = async (req, res) => {
 // Exam Management
 export const createExam = async (req, res) => {
   try {
-    const { title, category, scheduledTime, duration, questions, totalMarks, selectionMethod, subjects, questionCount, language = 'English', status = 'draft', allowReattempts = true, maxAttempts = 3, allowTabSwitch = false } = req.body;
+    const { title, description, category, scheduledTime, duration, questions, questionMarks, totalMarks, selectionMethod, subjects, questionCount, language = 'English', status = 'draft', allowReattempts = true, maxAttempts = 3, allowTabSwitch = false, enableNegativeMarking = false, negativeMarksPerQuestion = 0 } = req.body;
 
     // Validate language
     if (language && !['Hindi', 'English', 'Both'].includes(language)) {
@@ -272,6 +272,19 @@ export const createExam = async (req, res) => {
       return res.status(400).json({ message: 'No questions selected' });
     }
 
+    // Calculate total marks from questionMarks if provided, otherwise use totalMarks from request or fallback to question count
+    let calculatedTotalMarks;
+    if (totalMarks) {
+      calculatedTotalMarks = parseFloat(totalMarks);
+    } else if (questionMarks && Object.keys(questionMarks).length > 0) {
+      calculatedTotalMarks = Object.values(questionMarks).reduce(
+        (sum, marks) => sum + (parseFloat(marks) || 0),
+        0
+      );
+    } else {
+      calculatedTotalMarks = selectedQuestions.length;
+    }
+
     // Handle scheduledTime based on status
     let scheduledDate;
     let expiresAt;
@@ -298,19 +311,34 @@ export const createExam = async (req, res) => {
       expiresAt = null;
     }
 
+    // Ensure questionMarks keys are strings (Mongoose Map requires consistent key types)
+    let normalizedQuestionMarks = {};
+    if (questionMarks && typeof questionMarks === 'object') {
+      for (const key in questionMarks) {
+        if (questionMarks.hasOwnProperty(key)) {
+          // Convert key to string for consistent storage
+          normalizedQuestionMarks[key.toString()] = parseFloat(questionMarks[key]) || questionMarks[key];
+        }
+      }
+    }
+
     const exam = new Exam({
       title,
+      description: description || '',
       category,
       scheduledTime: scheduledDate,
       duration,
       questions: selectedQuestions,
-      totalMarks: totalMarks || selectedQuestions.length,
+      questionMarks: Object.keys(normalizedQuestionMarks).length > 0 ? normalizedQuestionMarks : {},
+      totalMarks: calculatedTotalMarks,
       language: language || 'English',
       expiresAt,
       status: status,
       allowReattempts: allowReattempts !== undefined ? allowReattempts : true,
       maxAttempts: maxAttempts || 3,
       allowTabSwitch: allowTabSwitch !== undefined ? allowTabSwitch : false,
+      enableNegativeMarking: enableNegativeMarking || false,
+      negativeMarksPerQuestion: enableNegativeMarking ? (parseFloat(negativeMarksPerQuestion) || 0) : 0,
       createdBy: req.user._id
     });
 
@@ -372,11 +400,22 @@ export const updateExam = async (req, res) => {
 
     // Update fields
     if (req.body.title) exam.title = req.body.title;
+    if (req.body.description !== undefined) exam.description = req.body.description || '';
     if (req.body.category) exam.category = req.body.category;
     if (req.body.duration) exam.duration = req.body.duration;
     if (req.body.language) exam.language = req.body.language;
     if (req.body.questions) exam.questions = req.body.questions;
+    if (req.body.questionMarks !== undefined) {
+      exam.questionMarks = req.body.questionMarks || {};
+      // Recalculate total marks
+      const calculatedTotal = Object.values(exam.questionMarks).reduce((sum, marks) => sum + (parseFloat(marks) || 0), 0);
+      exam.totalMarks = calculatedTotal || exam.questions.length;
+    }
     if (req.body.totalMarks) exam.totalMarks = req.body.totalMarks;
+    if (req.body.enableNegativeMarking !== undefined) exam.enableNegativeMarking = req.body.enableNegativeMarking;
+    if (req.body.negativeMarksPerQuestion !== undefined) {
+      exam.negativeMarksPerQuestion = req.body.enableNegativeMarking ? (parseFloat(req.body.negativeMarksPerQuestion) || 0) : 0;
+    }
     if (req.body.allowReattempts !== undefined) exam.allowReattempts = req.body.allowReattempts;
     if (req.body.maxAttempts !== undefined) exam.maxAttempts = req.body.maxAttempts;
     if (req.body.allowTabSwitch !== undefined) exam.allowTabSwitch = req.body.allowTabSwitch;

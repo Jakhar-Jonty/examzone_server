@@ -10,6 +10,7 @@ const articleSchema = new mongoose.Schema({
   },
   subjects: [{ type: String }],
   docxFile: { type: String },
+  pdfFile: { type: String },
   thumbnail: { type: String },
   isPremium: { type: Boolean, default: false },
   status: { 

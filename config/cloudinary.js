@@ -55,6 +55,9 @@ const storage = new CloudinaryStorage({
     if (file.mimetype === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
       folder = 'goprep/documents';
       resourceType = 'raw';
+    } else if (file.mimetype === 'application/pdf') {
+      folder = 'goprep/documents';
+      resourceType = 'raw';
     } else if (file.mimetype.startsWith('image/')) {
       folder = 'goprep/images';
       resourceType = 'image';

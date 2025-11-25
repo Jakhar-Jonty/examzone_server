@@ -1,5 +1,7 @@
 import Article from '../models/Article.js';
 import User from '../models/User.js';
+import https from 'https';
+import http from 'http';
 
 // Admin routes
 export const createArticle = async (req, res) => {
@@ -54,6 +56,9 @@ export const createArticle = async (req, res) => {
     }
     if (req.files?.docxFile && req.files.docxFile[0]) {
       articleData.docxFile = req.files.docxFile[0].path;
+    }
+    if (req.files?.pdfFile && req.files.pdfFile[0]) {
+      articleData.pdfFile = req.files.pdfFile[0].path;
     }
 
     console.log('Creating article with data:', articleData);
@@ -141,6 +146,9 @@ export const updateArticle = async (req, res) => {
     if (req.files?.docxFile && req.files.docxFile[0]) {
       article.docxFile = req.files.docxFile[0].path;
     }
+    if (req.files?.pdfFile && req.files.pdfFile[0]) {
+      article.pdfFile = req.files.pdfFile[0].path;
+    }
 
     await article.save();
 
@@ -201,7 +209,7 @@ export const getArticles = async (req, res) => {
     }
 
     const articles = await Article.find(query)
-      .select('title category subjects thumbnail isPremium createdAt docxFile')
+      .select('title category subjects thumbnail isPremium createdAt docxFile pdfFile')
       .sort({ createdAt: -1 })
       .limit(limit * 1)
       .skip((page - 1) * limit);
@@ -272,10 +280,102 @@ export const searchArticles = async (req, res) => {
         { subjects: { $in: [new RegExp(q, 'i')] } }
       ]
     })
-    .select('title category subjects thumbnail isPremium createdAt')
+    .select('title category subjects thumbnail isPremium createdAt docxFile pdfFile')
     .limit(20);
 
     res.json({ articles });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+export const downloadArticleFile = async (req, res) => {
+  try {
+    const article = await Article.findById(req.params.id);
+    
+    if (!article) {
+      return res.status(404).json({ message: 'Article not found' });
+    }
+
+    if (article.status !== 'published') {
+      return res.status(404).json({ message: 'Article not found' });
+    }
+
+    // Check premium access
+    let user = null;
+    if (req.headers.authorization) {
+      try {
+        const jwt = require('jsonwebtoken');
+        const token = req.headers.authorization.replace('Bearer ', '');
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        user = await User.findById(decoded.userId);
+      } catch (e) {
+        // Invalid token, treat as guest
+      }
+    }
+
+    if (article.isPremium && (!user || user.subscriptionStatus !== 'premium')) {
+      return res.status(403).json({ 
+        message: 'Premium subscription required to download this file' 
+      });
+    }
+
+    // Determine which file to download
+    const fileType = req.query.type || 'pdf'; // 'pdf' or 'docx'
+    let fileUrl = null;
+    let extension = '';
+
+    if (fileType === 'pdf' && article.pdfFile) {
+      fileUrl = article.pdfFile;
+      extension = 'pdf';
+    } else if (fileType === 'docx' && article.docxFile) {
+      fileUrl = article.docxFile;
+      extension = 'docx';
+    } else {
+      return res.status(404).json({ message: 'File not available' });
+    }
+
+    // Generate a clean filename from article title
+    const sanitizeFilename = (title) => {
+      return title
+        .replace(/[^a-z0-9]/gi, '_')
+        .replace(/_+/g, '_')
+        .replace(/^_|_$/g, '')
+        .toLowerCase()
+        .substring(0, 100); // Limit length
+    };
+
+    const filename = `${sanitizeFilename(article.title)}.${extension}`;
+
+    // Fetch the file from Cloudinary and stream it with proper headers
+    try {
+      const url = new URL(fileUrl);
+      const client = url.protocol === 'https:' ? https : http;
+
+      // Set proper headers for file download
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.setHeader('Content-Type', fileType === 'pdf' ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+
+      // Fetch and pipe the file from Cloudinary
+      client.get(url, (cloudinaryResponse) => {
+        if (cloudinaryResponse.statusCode !== 200) {
+          return res.status(cloudinaryResponse.statusCode).json({ message: 'Failed to fetch file from Cloudinary' });
+        }
+
+        // Pipe the file stream to the response
+        cloudinaryResponse.pipe(res);
+      }).on('error', (error) => {
+        console.error('Error downloading file from Cloudinary:', error);
+        if (!res.headersSent) {
+          res.status(500).json({ message: 'Failed to download file' });
+        }
+      });
+    } catch (error) {
+      console.error('Error processing download:', error);
+      if (!res.headersSent) {
+        res.status(500).json({ message: 'Failed to download file' });
+      }
+    }
   } catch (error) {
     res.status(500).json({ message: error.message });
   }

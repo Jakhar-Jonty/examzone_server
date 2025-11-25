@@ -2,6 +2,7 @@ import mongoose from 'mongoose';
 
 const examSchema = new mongoose.Schema({
   title: { type: String, required: true },
+  description: { type: String, default: '' },
   category: { 
     type: String, 
     enum: ['SSC', 'Banking', 'HSSC'], 
@@ -13,7 +14,14 @@ const examSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Question'
   }],
+  questionMarks: {
+    type: Map,
+    of: Number,
+    default: {}
+  },
   totalMarks: { type: Number, required: true },
+  enableNegativeMarking: { type: Boolean, default: false },
+  negativeMarksPerQuestion: { type: Number, default: 0 },
   language: {
     type: String,
     enum: ['Hindi', 'English', 'Both'],

@@ -15,7 +15,8 @@ const examAttemptSchema = new mongoose.Schema({
     question: { type: mongoose.Schema.Types.ObjectId, ref: 'Question' },
     selectedAnswer: { type: String, enum: ['A', 'B', 'C', 'D', null] },
     isCorrect: { type: Boolean },
-    marksObtained: { type: Number, default: 0 }
+    marksObtained: { type: Number, default: 0 },
+    timeSpent: { type: Number, default: 0 } // Time spent on this question in seconds
   }],
   startTime: { type: Date, required: true },
   endTime: { type: Date },
