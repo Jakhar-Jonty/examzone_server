@@ -36,6 +36,36 @@ const examSchema = new mongoose.Schema({
   allowReattempts: { type: Boolean, default: true },
   maxAttempts: { type: Number, default: 3 },
   allowTabSwitch: { type: Boolean, default: false }, // If false, auto-submit on tab switch
+  randomizeQuestions: { type: Boolean, default: false }, // Randomize question order for each attempt
+  sections: [{ // Section-based exams
+    name: { type: String, required: true },
+    description: { type: String },
+    questions: [{
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Question'
+    }],
+    order: { type: Number, default: 0 }
+  }],
+  timePerQuestion: { type: Number }, // Time limit per question in seconds (optional)
+  difficultyDistribution: { // Auto-select by difficulty
+    easy: { type: Number, default: 0 }, // Percentage
+    medium: { type: Number, default: 0 },
+    hard: { type: Number, default: 0 }
+  },
+  tags: [{ type: String }], // Tags for exam organization
+  isTemplate: { type: Boolean, default: false }, // If true, this is a reusable template
+  templateName: { type: String }, // Name for template
+  recurringSchedule: { // Advanced scheduling
+    enabled: { type: Boolean, default: false },
+    frequency: { type: String, enum: ['daily', 'weekly', 'monthly'] },
+    daysOfWeek: [{ type: Number }], // 0-6 for weekly
+    timeSlots: [{ // Multiple time slots
+      startTime: { type: String }, // HH:mm format
+      endTime: { type: String },
+      maxParticipants: { type: Number }
+    }],
+    endDate: { type: Date } // When to stop recurring
+  },
   deleted: { type: Boolean, default: false },
   deletedAt: { type: Date },
   deletedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },

@@ -201,7 +201,8 @@ export const startExam = async (req, res) => {
       .populate({
         path: 'questions',
         select: 'questionText questionTextHindi options optionsHindi correctAnswer explanation explanationHindi marks questionImage language difficulty category subject topic'
-      });
+      })
+      .select('+sections +timePerQuestion +randomizeQuestions');
     
     if (!exam) {
       return res.status(404).json({ message: 'Exam not found or has been deleted' });
@@ -268,12 +269,20 @@ export const startExam = async (req, res) => {
       // Calculate next attempt number
       const nextAttemptNumber = attemptCount + 1;
       
+      // Randomize questions if enabled
+      let questionsToUse = [...exam.questions];
+      if (exam.randomizeQuestions) {
+        // Shuffle questions for this attempt
+        questionsToUse = questionsToUse.sort(() => Math.random() - 0.5);
+      }
+      
       // Initialize answers array
-      const answers = exam.questions.map(question => ({
+      const answers = questionsToUse.map(question => ({
         question: question,
         selectedAnswer: null,
         isCorrect: false,
-        marksObtained: 0
+        marksObtained: 0,
+        timeSpent: 0
       }));
 
       attempt = new ExamAttempt({
@@ -293,8 +302,16 @@ export const startExam = async (req, res) => {
       attempt = await ExamAttempt.findById(attempt._id)
         .populate({
           path: 'answers.question',
-          select: 'questionText questionTextHindi options optionsHindi correctAnswer explanation explanationHindi marks questionImage language'
+          select: 'questionText questionTextHindi options optionsHindi correctAnswer explanation explanationHindi marks questionImage language difficulty category subject topic'
         });
+      
+      // Update question usage statistics
+      questionsToUse.forEach(question => {
+        Question.findByIdAndUpdate(question._id, {
+          $inc: { usageCount: 1 },
+          $set: { lastUsed: new Date() }
+        }).exec();
+      });
     } else if (attempt.isPaused) {
       // Resume paused exam - calculate paused duration
       const now = new Date();
@@ -308,9 +325,16 @@ export const startExam = async (req, res) => {
       }
     }
 
-    // Return exam with populated questions so frontend doesn't need to call getExamDetails again
+    // Return exam with populated questions and sections/timePerQuestion so frontend doesn't need to call getExamDetails again
+    const examData = exam.toObject();
     res.json({ 
-      attempt, 
+      attempt,
+      exam: {
+        ...examData,
+        sections: exam.sections || [],
+        timePerQuestion: exam.timePerQuestion || null,
+        randomizeQuestions: exam.randomizeQuestions || false
+      },
       exam, // Include exam with populated questions
       isResumed: attempt.isPaused === false && attempt.lastResumedAt 
     });
@@ -377,7 +401,14 @@ export const submitExam = async (req, res) => {
     // If answers are provided in request body, update them before submitting
     // This ensures answers are saved even if saveAnswers() wasn't called first
     if (req.body.answers && Array.isArray(req.body.answers)) {
-      attempt.answers = req.body.answers;
+      // Ensure all answer fields are properly formatted
+      attempt.answers = req.body.answers.map(ans => ({
+        question: ans.question,
+        selectedAnswer: ans.selectedAnswer || null,
+        isCorrect: ans.isCorrect || false,
+        marksObtained: ans.marksObtained || 0,
+        timeSpent: typeof ans.timeSpent === 'number' ? ans.timeSpent : (parseFloat(ans.timeSpent) || 0)
+      }));
       await attempt.save();
       // Re-populate after saving
       await attempt.populate({

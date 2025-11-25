@@ -240,7 +240,7 @@ export const saveAIGuestions = async (req, res) => {
 // Exam Management
 export const createExam = async (req, res) => {
   try {
-    const { title, description, category, scheduledTime, duration, questions, questionMarks, totalMarks, selectionMethod, subjects, questionCount, language = 'English', status = 'draft', allowReattempts = true, maxAttempts = 3, allowTabSwitch = false, enableNegativeMarking = false, negativeMarksPerQuestion = 0 } = req.body;
+    const { title, description, category, scheduledTime, duration, questions, questionMarks, totalMarks, selectionMethod, subjects, questionCount, language = 'English', status = 'draft', allowReattempts = true, maxAttempts = 3, allowTabSwitch = false, enableNegativeMarking = false, negativeMarksPerQuestion = 0, randomizeQuestions = false, timePerQuestion = null, difficultyDistribution = { easy: 0, medium: 0, hard: 0 }, sections = [], tags = [] } = req.body;
 
     // Validate language
     if (language && !['Hindi', 'English', 'Both'].includes(language)) {
@@ -249,8 +249,19 @@ export const createExam = async (req, res) => {
 
     let selectedQuestions = [];
 
-    if (selectionMethod === 'manual') {
-      selectedQuestions = questions || [];
+    // Handle sections - if sections are provided, collect questions from all sections
+    let questionsFromSections = [];
+    if (sections && Array.isArray(sections) && sections.length > 0) {
+      sections.forEach(section => {
+        if (section.questions && Array.isArray(section.questions)) {
+          questionsFromSections = [...questionsFromSections, ...section.questions];
+        }
+      });
+    }
+
+    if (selectionMethod === 'manual' || (sections && sections.length > 0)) {
+      // If sections exist, use questions from sections, otherwise use manual selection
+      selectedQuestions = questionsFromSections.length > 0 ? questionsFromSections : (questions || []);
     } else if (selectionMethod === 'auto') {
       const query = { category };
       if (subjects && subjects.length > 0) {
@@ -339,6 +350,11 @@ export const createExam = async (req, res) => {
       allowTabSwitch: allowTabSwitch !== undefined ? allowTabSwitch : false,
       enableNegativeMarking: enableNegativeMarking || false,
       negativeMarksPerQuestion: enableNegativeMarking ? (parseFloat(negativeMarksPerQuestion) || 0) : 0,
+      randomizeQuestions: randomizeQuestions || false,
+      timePerQuestion: timePerQuestion ? parseInt(timePerQuestion) : null,
+      difficultyDistribution: difficultyDistribution || { easy: 0, medium: 0, hard: 0 },
+      sections: sections || [],
+      tags: tags || [],
       createdBy: req.user._id
     });
 
@@ -419,6 +435,11 @@ export const updateExam = async (req, res) => {
     if (req.body.allowReattempts !== undefined) exam.allowReattempts = req.body.allowReattempts;
     if (req.body.maxAttempts !== undefined) exam.maxAttempts = req.body.maxAttempts;
     if (req.body.allowTabSwitch !== undefined) exam.allowTabSwitch = req.body.allowTabSwitch;
+    if (req.body.randomizeQuestions !== undefined) exam.randomizeQuestions = req.body.randomizeQuestions;
+    if (req.body.timePerQuestion !== undefined) exam.timePerQuestion = req.body.timePerQuestion ? parseInt(req.body.timePerQuestion) : null;
+    if (req.body.difficultyDistribution !== undefined) exam.difficultyDistribution = req.body.difficultyDistribution || { easy: 0, medium: 0, hard: 0 };
+    if (req.body.sections !== undefined) exam.sections = req.body.sections || [];
+    if (req.body.tags !== undefined) exam.tags = req.body.tags || [];
     
     // Handle scheduledTime
     if (req.body.scheduledTime) {

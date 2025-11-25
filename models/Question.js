@@ -38,6 +38,9 @@ const questionSchema = new mongoose.Schema({
   explanationHindi: { type: String },
   questionImage: { type: String },
   isAIGenerated: { type: Boolean, default: false },
+  tags: [{ type: String }], // Tags for better organization
+  usageCount: { type: Number, default: 0 }, // Track how many times used in exams
+  lastUsed: { type: Date }, // Last time used in an exam
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   createdAt: { type: Date, default: Date.now }
 });
