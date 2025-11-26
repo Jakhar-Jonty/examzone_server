@@ -355,6 +355,9 @@ export const createExam = async (req, res) => {
       difficultyDistribution: difficultyDistribution || { easy: 0, medium: 0, hard: 0 },
       sections: sections || [],
       tags: tags || [],
+      isTemplate: req.body.isTemplate || false,
+      templateName: req.body.templateName || null,
+      recurringSchedule: req.body.recurringSchedule || { enabled: false },
       createdBy: req.user._id
     });
 
@@ -440,6 +443,9 @@ export const updateExam = async (req, res) => {
     if (req.body.difficultyDistribution !== undefined) exam.difficultyDistribution = req.body.difficultyDistribution || { easy: 0, medium: 0, hard: 0 };
     if (req.body.sections !== undefined) exam.sections = req.body.sections || [];
     if (req.body.tags !== undefined) exam.tags = req.body.tags || [];
+    if (req.body.isTemplate !== undefined) exam.isTemplate = req.body.isTemplate;
+    if (req.body.templateName !== undefined) exam.templateName = req.body.templateName;
+    if (req.body.recurringSchedule !== undefined) exam.recurringSchedule = req.body.recurringSchedule || { enabled: false };
     
     // Handle scheduledTime
     if (req.body.scheduledTime) {
@@ -770,6 +776,180 @@ export const uploadFile = async (req, res) => {
       url: req.file.path,
       publicId: req.file.filename
     });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// Get exam templates
+export const getExamTemplates = async (req, res) => {
+  try {
+    const templates = await Exam.find({ isTemplate: true, deleted: { $ne: true } })
+      .select('title templateName category duration language marksPerQuestion randomizeQuestions timePerQuestion difficultyDistribution sections tags createdAt')
+      .populate('createdBy', 'name')
+      .sort({ createdAt: -1 });
+
+    res.json({ templates });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// Get question bank statistics
+export const getQuestionBankStats = async (req, res) => {
+  try {
+    const { category } = req.query;
+    const query = {};
+    if (category) query.category = category;
+
+    const totalQuestions = await Question.countDocuments(query);
+    
+    // Difficulty distribution
+    const difficultyStats = await Question.aggregate([
+      { $match: query },
+      { $group: { _id: '$difficulty', count: { $sum: 1 } } }
+    ]);
+
+    // Category distribution
+    const categoryStats = await Question.aggregate([
+      { $match: query },
+      { $group: { _id: '$category', count: { $sum: 1 } } }
+    ]);
+
+    // Subject distribution
+    const subjectStats = await Question.aggregate([
+      { $match: query },
+      { $group: { _id: '$subject', count: { $sum: 1 } } }
+    ]);
+
+    // Language distribution
+    const languageStats = await Question.aggregate([
+      { $match: query },
+      { $group: { _id: '$language', count: { $sum: 1 } } }
+    ]);
+
+    // Usage statistics (questions used in exams)
+    const usageStats = await Exam.aggregate([
+      { $unwind: '$questions' },
+      { $group: { _id: '$questions', examCount: { $sum: 1 } } },
+      { $group: { _id: null, usedQuestions: { $sum: 1 }, totalUsage: { $sum: '$examCount' } } }
+    ]);
+
+    // Average marks
+    const avgMarksResult = await Question.aggregate([
+      { $match: query },
+      { $group: { _id: null, avgMarks: { $avg: '$marks' } } }
+    ]);
+
+    const stats = {
+      totalQuestions,
+      difficultyDistribution: {
+        easy: difficultyStats.find(d => d._id === 'Easy')?.count || 0,
+        medium: difficultyStats.find(d => d._id === 'Medium')?.count || 0,
+        hard: difficultyStats.find(d => d._id === 'Hard')?.count || 0,
+        notSet: difficultyStats.find(d => !d._id)?.count || 0
+      },
+      categoryDistribution: categoryStats.reduce((acc, cat) => {
+        acc[cat._id] = cat.count;
+        return acc;
+      }, {}),
+      subjectDistribution: subjectStats.reduce((acc, subj) => {
+        acc[subj._id || 'Not Set'] = subj.count;
+        return acc;
+      }, {}),
+      languageDistribution: languageStats.reduce((acc, lang) => {
+        acc[lang._id || 'Not Set'] = lang.count;
+        return acc;
+      }, {}),
+      usage: {
+        usedQuestions: usageStats[0]?.usedQuestions || 0,
+        unusedQuestions: totalQuestions - (usageStats[0]?.usedQuestions || 0),
+        totalUsage: usageStats[0]?.totalUsage || 0
+      },
+      averageMarks: avgMarksResult[0]?.avgMarks || 1
+    };
+
+    res.json({ stats });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// Get exam analytics (preview before creating)
+export const getExamAnalytics = async (req, res) => {
+  try {
+    const { questionIds } = req.body;
+    
+    if (!questionIds || !Array.isArray(questionIds) || questionIds.length === 0) {
+      return res.status(400).json({ message: 'Question IDs array is required' });
+    }
+
+    const questions = await Question.find({ _id: { $in: questionIds } })
+      .select('difficulty marks questionText');
+
+    if (questions.length === 0) {
+      return res.status(404).json({ message: 'No questions found' });
+    }
+
+    // Calculate statistics
+    const totalQuestions = questions.length;
+    const totalMarks = questions.reduce((sum, q) => sum + (q.marks || 1), 0);
+    const avgMarks = totalMarks / totalQuestions;
+
+    // Difficulty distribution
+    const difficultyCounts = {
+      easy: questions.filter(q => q.difficulty === 'Easy').length,
+      medium: questions.filter(q => q.difficulty === 'Medium').length,
+      hard: questions.filter(q => q.difficulty === 'Hard').length,
+      notSet: questions.filter(q => !q.difficulty).length
+    };
+
+    const difficultyPercentages = {
+      easy: (difficultyCounts.easy / totalQuestions) * 100,
+      medium: (difficultyCounts.medium / totalQuestions) * 100,
+      hard: (difficultyCounts.hard / totalQuestions) * 100,
+      notSet: (difficultyCounts.notSet / totalQuestions) * 100
+    };
+
+    // Estimated difficulty (weighted average)
+    const difficultyWeights = { Easy: 1, Medium: 2, Hard: 3 };
+    const weightedSum = questions.reduce((sum, q) => {
+      const weight = difficultyWeights[q.difficulty] || 1.5;
+      return sum + weight;
+    }, 0);
+    const estimatedDifficulty = weightedSum / totalQuestions;
+    
+    let difficultyLevel = 'Medium';
+    if (estimatedDifficulty < 1.5) difficultyLevel = 'Easy';
+    else if (estimatedDifficulty > 2.5) difficultyLevel = 'Hard';
+
+    // Estimated average time (based on difficulty and marks)
+    // Rough estimates: Easy = 1 min/mark, Medium = 1.5 min/mark, Hard = 2 min/mark
+    const estimatedTime = questions.reduce((sum, q) => {
+      const marks = q.marks || 1;
+      let timePerMark = 1;
+      if (q.difficulty === 'Medium') timePerMark = 1.5;
+      else if (q.difficulty === 'Hard') timePerMark = 2;
+      return sum + (marks * timePerMark);
+    }, 0);
+
+    const analytics = {
+      totalQuestions,
+      totalMarks,
+      averageMarks: avgMarks.toFixed(2),
+      difficultyDistribution: {
+        counts: difficultyCounts,
+        percentages: difficultyPercentages
+      },
+      estimatedDifficulty: difficultyLevel,
+      estimatedAverageTime: Math.round(estimatedTime),
+      estimatedTimeRange: {
+        min: Math.round(estimatedTime * 0.7), // 70% of estimated time
+        max: Math.round(estimatedTime * 1.3)  // 130% of estimated time
+      }
+    };
+
+    res.json({ analytics });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }

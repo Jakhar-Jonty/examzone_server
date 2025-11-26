@@ -20,7 +20,10 @@ import {
   getSubjectsAndTopics,
   getUsers,
   upgradeUserSubscription,
-  uploadFile
+  uploadFile,
+  getExamTemplates,
+  getQuestionBankStats,
+  getExamAnalytics
 } from '../controllers/adminController.js';
 
 const router = express.Router();
@@ -67,6 +70,11 @@ router.post('/users/:userId/upgrade-subscription', adminAuth, upgradeUserSubscri
 
 // File Upload
 router.post('/upload', adminAuth, upload.single('file'), uploadFile);
+
+// Exam Templates & Analytics
+router.get('/exams/templates', adminAuth, getExamTemplates);
+router.get('/questions/stats', adminAuth, getQuestionBankStats);
+router.post('/exams/analytics', adminAuth, getExamAnalytics);
 
 // Cloudinary config check endpoint (for debugging)
 router.get('/cloudinary-config', adminAuth, (req, res) => {
