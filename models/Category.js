@@ -1,58 +1,82 @@
 import mongoose from 'mongoose';
 
 const categorySchema = new mongoose.Schema({
-  name: {
-    type: String,
-    required: true,
-    unique: true,
-    trim: true,
-    uppercase: true
-  },
-  displayName: {
-    type: String,
+  name: { 
+    type: String, 
     required: true,
     trim: true
   },
-  subcategories: [{
-    name: {
-      type: String,
-      required: true,
-      trim: true
-    },
-    displayName: {
-      type: String,
-      trim: true
-    },
-    createdAt: {
-      type: Date,
-      default: Date.now
-    }
-  }],
-  isActive: {
-    type: Boolean,
-    default: true
+  code: { 
+    type: String, 
+    required: true,
+    unique: true,
+    uppercase: true,
+    trim: true
   },
-  createdBy: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User'
+  description: { 
+    type: String,
+    trim: true
   },
-  createdAt: {
-    type: Date,
-    default: Date.now
+  parentCategory: { 
+    type: mongoose.Schema.Types.ObjectId, 
+    ref: 'Category',
+    default: null // null means it's a top-level category
   },
-  updatedAt: {
-    type: Date,
-    default: Date.now
+  order: { 
+    type: Number, 
+    default: 0 
+  },
+  isActive: { 
+    type: Boolean, 
+    default: true 
+  },
+  icon: { 
+    type: String // Icon name or URL for UI
+  },
+  color: { 
+    type: String // Hex color code for UI
+  },
+  createdBy: { 
+    type: mongoose.Schema.Types.ObjectId, 
+    ref: 'User' 
+  },
+  createdAt: { 
+    type: Date, 
+    default: Date.now 
+  },
+  updatedAt: { 
+    type: Date, 
+    default: Date.now 
   }
+}, {
+  timestamps: true
 });
 
-// Ensure subcategory names are unique within a category
-categorySchema.index({ name: 1 }, { unique: true });
+// Index for efficient queries
+categorySchema.index({ parentCategory: 1, order: 1 });
+categorySchema.index({ code: 1 });
+categorySchema.index({ isActive: 1 });
 
-categorySchema.pre('save', function(next) {
-  this.updatedAt = Date.now();
-  next();
+// Virtual for sub-categories
+categorySchema.virtual('subCategories', {
+  ref: 'Category',
+  localField: '_id',
+  foreignField: 'parentCategory'
 });
+
+// Method to check if category is a top-level category
+categorySchema.methods.isTopLevel = function() {
+  return !this.parentCategory;
+};
+
+// Static method to get all top-level categories
+categorySchema.statics.getTopLevelCategories = function() {
+  return this.find({ parentCategory: null, isActive: true }).sort({ order: 1 });
+};
+
+// Static method to get sub-categories of a category
+categorySchema.statics.getSubCategories = function(parentId) {
+  return this.find({ parentCategory: parentId, isActive: true }).sort({ order: 1 });
+};
 
 export default mongoose.model('Category', categorySchema);
-

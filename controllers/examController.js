@@ -22,10 +22,36 @@ export const getAvailableExams = async (req, res) => {
     const user = await User.findById(req.user._id);
     const now = new Date();
     
+    // Handle both old string categories and new ObjectId categories
+    const Category = (await import('../models/Category.js')).default;
+    const categoryIds = [];
+    
+    if (user.examPreparations && user.examPreparations.length > 0) {
+      // Check if examPreparations contains ObjectIds or strings
+      const firstPrep = user.examPreparations[0];
+      if (typeof firstPrep === 'string') {
+        // Old format: strings like "SSC", "Banking", "HSSC"
+        // Find categories by code
+        const categories = await Category.find({ 
+          code: { $in: user.examPreparations.map(p => p.toUpperCase()) },
+          isActive: true 
+        });
+        categoryIds.push(...categories.map(c => c._id));
+      } else {
+        // New format: already ObjectIds
+        categoryIds.push(...user.examPreparations);
+      }
+    }
+    
+    // Build query - handle both old and new category formats
+    const categoryQuery = categoryIds.length > 0 
+      ? { category: { $in: categoryIds } }
+      : {}; // If no categories found, return empty
+    
     // Get available exams - exams that have started and not expired
     // Account for IST timezone (UTC+5:30) - MongoDB stores in UTC
     const exams = await Exam.find({
-      category: { $in: user.examPreparations },
+      ...categoryQuery,
       status: { $in: ['scheduled', 'active'] },
       scheduledTime: { $lte: now }, // Already started
       $or: [
@@ -272,8 +298,59 @@ export const startExam = async (req, res) => {
       // Randomize questions if enabled
       let questionsToUse = [...exam.questions];
       if (exam.randomizeQuestions) {
-        // Shuffle questions for this attempt
-        questionsToUse = questionsToUse.sort(() => Math.random() - 0.5);
+        // If exam has sections, randomize within each section separately
+        if (exam.sections && Array.isArray(exam.sections) && exam.sections.length > 0) {
+          // Create a map of question IDs to questions for quick lookup
+          const questionMap = new Map();
+          exam.questions.forEach(q => {
+            const qId = q._id ? q._id.toString() : q.toString();
+            questionMap.set(qId, q);
+          });
+          
+          // Randomize questions within each section
+          const randomizedQuestions = [];
+          exam.sections.forEach(section => {
+            if (section.questions && Array.isArray(section.questions)) {
+              // Get questions for this section
+              const sectionQuestions = section.questions
+                .map(sqId => {
+                  const sqIdStr = sqId.toString();
+                  return questionMap.get(sqIdStr);
+                })
+                .filter(q => q !== undefined);
+              
+              // Shuffle questions within this section
+              const shuffledSectionQuestions = sectionQuestions.sort(() => Math.random() - 0.5);
+              randomizedQuestions.push(...shuffledSectionQuestions);
+            }
+          });
+          
+          // Add any questions not in any section (shouldn't happen, but just in case)
+          const sectionQuestionIds = new Set();
+          exam.sections.forEach(section => {
+            if (section.questions) {
+              section.questions.forEach(sqId => {
+                sectionQuestionIds.add(sqId.toString());
+              });
+            }
+          });
+          
+          const unassignedQuestions = exam.questions.filter(q => {
+            const qId = q._id ? q._id.toString() : q.toString();
+            return !sectionQuestionIds.has(qId);
+          });
+          
+          if (unassignedQuestions.length > 0) {
+            // Shuffle unassigned questions and add them at the end
+            const shuffledUnassigned = unassignedQuestions.sort(() => Math.random() - 0.5);
+            randomizedQuestions.push(...shuffledUnassigned);
+          }
+          
+          questionsToUse = randomizedQuestions;
+        } else {
+          // No sections - shuffle all questions together
+          questionsToUse = questionsToUse.sort(() => Math.random() - 0.5);
+        }
       }
       
       // Initialize answers array
@@ -592,7 +669,13 @@ export const pauseExam = async (req, res) => {
 export const getResult = async (req, res) => {
   try {
     const attempt = await ExamAttempt.findById(req.params.attemptId)
-      .populate('exam')
+      .populate({
+        path: 'exam',
+        populate: {
+          path: 'sections.questions',
+          select: '_id'
+        }
+      })
       .populate({
         path: 'answers.question',
         select: 'questionText questionTextHindi options optionsHindi correctAnswer explanation explanationHindi marks questionImage language'

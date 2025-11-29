@@ -25,7 +25,7 @@ const getOpenAIClient = () => {
   return openai;
 };
 
-export const generateQuestions = async (examType, subject, topic, count, difficulty, language = 'English') => {
+export const generateQuestions = async (categoryName, subject, topic, count, difficulty, language = 'English', subTopic = '', chapter = '') => {
   try {
     const client = getOpenAIClient();
     
@@ -38,8 +38,12 @@ export const generateQuestions = async (examType, subject, topic, count, difficu
       languageInstruction = 'Generate each question with both English and Hindi versions. For each question, provide questionText (English), questionTextHindi (Hindi), options (English), optionsHindi (Hindi), explanation (English), and explanationHindi (Hindi).';
     }
     
-    const topicText = topic ? ` on the topic "${topic}"` : '';
-    const prompt = `Generate ${count} multiple choice questions for ${examType} exam on ${subject}${topicText} with ${difficulty} difficulty. ${languageInstruction}
+    let topicText = '';
+    if (topic) topicText += ` on the topic "${topic}"`;
+    if (subTopic) topicText += `, specifically on the sub-topic "${subTopic}"`;
+    if (chapter) topicText += ` from chapter/unit "${chapter}"`;
+    
+    const prompt = `Generate ${count} multiple choice questions for ${categoryName} exam on ${subject}${topicText} with ${difficulty} difficulty. ${languageInstruction}
 
 Return a JSON object with a "questions" key containing an array with this exact structure:
 
@@ -156,10 +160,12 @@ Make sure each question has exactly 4 options labeled A, B, C, D. The correctAns
         explanation: q.explanation,
         subject: q.subject || subject,
         topic: q.topic || topic || '',
+        subTopic: subTopic || '',
+        chapter: chapter || '',
         marks: q.marks || 1,
         difficulty: difficulty,
-        category: examType,
-        language: language
+        language: language,
+        questionType: 'MCQ' // AI generator only creates MCQ questions
       };
 
       // Add Hindi fields if language is Both or Hindi

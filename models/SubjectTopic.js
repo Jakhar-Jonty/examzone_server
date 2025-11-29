@@ -12,9 +12,19 @@ const subjectTopicSchema = new mongoose.Schema({
     default: ''
   },
   category: { 
-    type: String, 
-    enum: ['SSC', 'Banking', 'HSSC'],
+    type: mongoose.Schema.Types.ObjectId, 
+    ref: 'Category',
     required: true
+  },
+  subCategory: { 
+    type: mongoose.Schema.Types.ObjectId, 
+    ref: 'Category',
+    default: null
+  },
+  tier: { 
+    type: mongoose.Schema.Types.ObjectId, 
+    ref: 'Tier',
+    default: null
   },
   usageCount: { 
     type: Number, 
@@ -29,7 +39,7 @@ const subjectTopicSchema = new mongoose.Schema({
 });
 
 // Compound index to ensure uniqueness of subject/topic/category combination
-subjectTopicSchema.index({ subject: 1, topic: 1, category: 1 }, { unique: true });
+subjectTopicSchema.index({ subject: 1, topic: 1, category: 1, subCategory: 1, tier: 1 }, { unique: true });
 
 export default mongoose.model('SubjectTopic', subjectTopicSchema);
 

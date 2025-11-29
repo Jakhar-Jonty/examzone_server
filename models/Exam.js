@@ -4,9 +4,19 @@ const examSchema = new mongoose.Schema({
   title: { type: String, required: true },
   description: { type: String, default: '' },
   category: { 
-    type: String, 
-    enum: ['SSC', 'Banking', 'HSSC'], 
+    type: mongoose.Schema.Types.ObjectId, 
+    ref: 'Category',
     required: true 
+  },
+  subCategory: { 
+    type: mongoose.Schema.Types.ObjectId, 
+    ref: 'Category',
+    default: null
+  },
+  tier: { 
+    type: mongoose.Schema.Types.ObjectId, 
+    ref: 'Tier',
+    default: null
   },
   scheduledTime: { type: Date, required: true },
   duration: { type: Number, required: true },
@@ -44,8 +54,17 @@ const examSchema = new mongoose.Schema({
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Question'
     }],
-    order: { type: Number, default: 0 }
+    order: { type: Number, default: 0 },
+    // Section-specific settings
+    timeLimit: { type: Number }, // Time limit for this section in minutes (optional)
+    marksPerQuestion: { type: Number }, // Marks per question in this section
+    negativeMarking: { type: Number, default: 0 }, // Negative marks per wrong answer
+    cutoff: { type: Number }, // Sectional cutoff (minimum marks to qualify)
+    isQualifying: { type: Boolean, default: false }, // Qualifying section (doesn't count in final score)
+    isOptional: { type: Boolean, default: false } // Optional section
   }],
+  enableSectionTiming: { type: Boolean, default: false }, // Enable section-wise timing (each section has its own timer)
+  enableSectionLocking: { type: Boolean, default: false }, // Lock sections after leaving (can't return to completed sections)
   timePerQuestion: { type: Number }, // Time limit per question in seconds (optional)
   difficultyDistribution: { // Auto-select by difficulty
     easy: { type: Number, default: 0 }, // Percentage
@@ -55,6 +74,21 @@ const examSchema = new mongoose.Schema({
   tags: [{ type: String }], // Tags for exam organization
   isTemplate: { type: Boolean, default: false }, // If true, this is a reusable template
   templateName: { type: String }, // Name for template
+  // Two-stage exam pattern (Prelims + Mains)
+  examPattern: {
+    type: String,
+    enum: ['Single', 'TwoStage'], // Single exam or Prelims+Mains
+    default: 'Single'
+  },
+  prelimsExam: { // If TwoStage, link to prelims exam
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Exam'
+  },
+  mainsExam: { // If TwoStage, link to mains exam
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Exam'
+  },
+  overallCutoff: { type: Number }, // Overall cutoff for the exam
   recurringSchedule: { // Advanced scheduling
     enabled: { type: Boolean, default: false },
     frequency: { type: String, enum: ['daily', 'weekly', 'monthly'] },

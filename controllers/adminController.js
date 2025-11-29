@@ -8,11 +8,17 @@ import { generateQuestions } from '../utils/aiQuestionGenerator.js';
 import cloudinary from '../config/cloudinary.js';
 
 // Helper function to save/update subject-topic combination
-const saveSubjectTopic = async (subject, topic, category) => {
+const saveSubjectTopic = async (subject, topic, category, subCategory = null, tier = null) => {
   try {
     const topicValue = topic || '';
     await SubjectTopic.findOneAndUpdate(
-      { subject: subject.trim(), topic: topicValue.trim(), category },
+      { 
+        subject: subject.trim(), 
+        topic: topicValue.trim(), 
+        category,
+        subCategory: subCategory || null,
+        tier: tier || null
+      },
       { 
         $inc: { usageCount: 1 },
         $set: { lastUsed: new Date() }
@@ -41,17 +47,44 @@ export const addQuestion = async (req, res) => {
       createdBy: req.user._id
     };
 
+    // Convert empty strings to null for optional ObjectId fields
+    if (questionData.subCategory === '' || questionData.subCategory === 'none') {
+      questionData.subCategory = null;
+    }
+    if (questionData.tier === '' || questionData.tier === 'none') {
+      questionData.tier = null;
+    }
+
     if (req.file) {
       // req.file.path is set by CloudinaryStorage
       questionData.questionImage = req.file.path;
       console.log('File uploaded successfully:', req.file.path);
     }
 
+    console.log('Saving question with data:', {
+      category: questionData.category,
+      subCategory: questionData.subCategory,
+      tier: questionData.tier
+    });
+
     const question = new Question(questionData);
     await question.save();
+    
+    console.log('Question saved:', {
+      _id: question._id,
+      category: question.category,
+      subCategory: question.subCategory,
+      tier: question.tier
+    });
 
     // Save subject-topic combination
-    await saveSubjectTopic(questionData.subject, questionData.topic, questionData.category);
+    await saveSubjectTopic(
+      questionData.subject, 
+      questionData.topic, 
+      questionData.category,
+      questionData.subCategory,
+      questionData.tier
+    );
 
     res.status(201).json({ message: 'Question added successfully', question });
   } catch (error) {
@@ -74,20 +107,85 @@ export const addQuestion = async (req, res) => {
 
 export const getQuestions = async (req, res) => {
   try {
-    const { category, subject, difficulty, page = 1, limit = 50 } = req.query;
+    const { 
+      category, subCategory, tier, subject, topic, subTopic, difficulty, questionType,
+      isPYQ, sourceExam, sourceYear, paperSet, chapter,
+      page = 1, limit = 50 
+    } = req.query;
     const query = {};
 
-    if (category) query.category = category;
-    if (subject) query.subject = subject;
+    // Hierarchical filtering: match questions at the selected level and below
+    // If category is provided, it must match
+    if (category && category !== 'none' && category !== '') {
+      query.category = category;
+    }
+    
+    // If subCategory is provided, it must match exactly
+    if (subCategory && subCategory !== 'none' && subCategory !== '') {
+      query.subCategory = subCategory;
+    }
+    
+    // If tier is provided, it must match exactly
+    if (tier && tier !== 'none' && tier !== '') {
+      query.tier = tier;
+    }
+    
+    // Debug logging
+    console.log('=== Question Query Debug ===');
+    console.log('Query params received:', { category, subCategory, tier });
+    console.log('MongoDB query built:', JSON.stringify(query, null, 2));
+    
+    // Also log a sample of what's in the database
+    if (category) {
+      const sampleQuestions = await Question.find({ category })
+        .select('category subCategory tier')
+        .populate('category', 'name')
+        .populate('subCategory', 'name')
+        .populate('tier', 'name')
+        .limit(3)
+        .lean();
+      console.log(`Sample questions in DB (category=${category}):`, 
+        sampleQuestions.map(q => ({
+          category: q.category?.name || q.category,
+          subCategory: q.subCategory?.name || q.subCategory,
+          tier: q.tier?.name || q.tier
+        }))
+      );
+    }
+    
+    if (subject) query.subject = new RegExp(subject, 'i');
+    if (topic) query.topic = new RegExp(topic, 'i');
+    if (subTopic) query.subTopic = new RegExp(subTopic, 'i');
+    if (chapter) query.chapter = new RegExp(chapter, 'i');
     if (difficulty) query.difficulty = difficulty;
+    if (questionType) query.questionType = questionType;
+    
+    // PYQ filtering
+    if (isPYQ !== undefined) query.isPYQ = isPYQ === 'true';
+    if (sourceExam) query.sourceExam = new RegExp(sourceExam, 'i');
+    if (sourceYear) query.sourceYear = parseInt(sourceYear);
+    if (paperSet) query.paperSet = paperSet;
 
     const questions = await Question.find(query)
+      .populate('category', 'name code')
+      .populate('subCategory', 'name code')
+      .populate('tier', 'name code')
       .populate('createdBy', 'name')
       .sort({ createdAt: -1 })
       .limit(limit * 1)
       .skip((page - 1) * limit);
 
     const total = await Question.countDocuments(query);
+    
+    console.log(`Found ${total} questions matching query`);
+    if (questions.length > 0) {
+      console.log('First question sample:', {
+        _id: questions[0]._id,
+        category: questions[0].category?.name || questions[0].category,
+        subCategory: questions[0].subCategory?.name || questions[0].subCategory,
+        tier: questions[0].tier?.name || questions[0].tier
+      });
+    }
 
     res.json({
       questions,
@@ -128,7 +226,13 @@ export const updateQuestion = async (req, res) => {
     await question.save();
 
     // Update subject-topic combination
-    await saveSubjectTopic(question.subject, question.topic, question.category);
+    await saveSubjectTopic(
+      question.subject, 
+      question.topic, 
+      question.category,
+      question.subCategory,
+      question.tier
+    );
 
     res.json({ message: 'Question updated successfully', question });
   } catch (error) {
@@ -175,11 +279,11 @@ export const deleteQuestions = async (req, res) => {
 // AI Question Generation
 export const generateAIGuestions = async (req, res) => {
   try {
-    const { examType, subject, topic, count, difficulty, language = 'English' } = req.body;
+    const { category, subCategory, tier, subject, topic, subTopic, chapter, count, difficulty, language = 'English' } = req.body;
 
-    if (!examType || !subject || !count || !difficulty) {
+    if (!category || !subject || !count || !difficulty) {
       return res.status(400).json({ 
-        message: 'examType, subject, count, and difficulty are required' 
+        message: 'category, subject, count, and difficulty are required' 
       });
     }
 
@@ -191,13 +295,40 @@ export const generateAIGuestions = async (req, res) => {
       return res.status(400).json({ message: 'Language must be Hindi, English, or Both' });
     }
 
-    const questions = await generateQuestions(examType, subject, topic, count, difficulty, language);
+    // Fetch category name for the prompt
+    const Category = (await import('../models/Category.js')).default;
+    const categoryDoc = await Category.findById(category);
+    if (!categoryDoc) {
+      return res.status(400).json({ message: 'Invalid category' });
+    }
+
+    let categoryName = categoryDoc.name;
+    if (subCategory) {
+      const subCat = categoryDoc.subCategories?.find(sc => sc._id.toString() === subCategory);
+      if (subCat) {
+        categoryName += ` ${subCat.name}`;
+      }
+    }
+    if (tier) {
+      const Tier = (await import('../models/Tier.js')).default;
+      const tierDoc = await Tier.findById(tier);
+      if (tierDoc) {
+        categoryName += ` ${tierDoc.name}`;
+      }
+    }
+
+    const questions = await generateQuestions(categoryName, subject, topic || '', count, difficulty, language, subTopic || '', chapter || '');
 
     res.json({ 
       message: 'Questions generated successfully',
       questions: questions.map(q => ({
         ...q,
+        category: category,
+        subCategory: subCategory || null,
+        tier: tier || null,
         topic: topic || q.topic || '',
+        subTopic: subTopic || q.subTopic || '',
+        chapter: chapter || q.chapter || '',
         isAIGenerated: true,
         createdBy: req.user._id
       }))
@@ -215,16 +346,51 @@ export const saveAIGuestions = async (req, res) => {
       return res.status(400).json({ message: 'Questions array is required' });
     }
 
-    const savedQuestions = await Question.insertMany(
-      questions.map(q => ({
-        ...q,
+    // Prepare questions for insertion with proper structure
+    const questionsToSave = questions.map(q => {
+      const questionData = {
+        questionText: q.questionText,
+        questionTextHindi: q.questionTextHindi || undefined,
+        options: q.options || [],
+        optionsHindi: q.optionsHindi || undefined,
+        correctAnswer: q.correctAnswer,
+        explanation: q.explanation || '',
+        explanationHindi: q.explanationHindi || undefined,
+        subject: q.subject,
+        topic: q.topic || undefined,
+        subTopic: q.subTopic || undefined,
+        chapter: q.chapter || undefined,
+        category: q.category,
+        subCategory: q.subCategory || null,
+        tier: q.tier || null,
+        difficulty: q.difficulty || 'Medium',
+        marks: q.marks || 1,
+        language: q.language || 'English',
+        questionType: q.questionType || 'MCQ',
         createdBy: req.user._id
-      }))
-    );
+      };
+
+      // Remove undefined fields
+      Object.keys(questionData).forEach(key => {
+        if (questionData[key] === undefined) {
+          delete questionData[key];
+        }
+      });
+
+      return questionData;
+    });
+
+    const savedQuestions = await Question.insertMany(questionsToSave);
 
     // Save subject-topic combinations for all saved questions
     for (const question of savedQuestions) {
-      await saveSubjectTopic(question.subject, question.topic, question.category);
+      await saveSubjectTopic(
+        question.subject, 
+        question.topic, 
+        question.category,
+        question.subCategory,
+        question.tier
+      );
     }
 
     res.json({ 
@@ -233,6 +399,7 @@ export const saveAIGuestions = async (req, res) => {
       questions: savedQuestions
     });
   } catch (error) {
+    console.error('Error saving AI questions:', error);
     res.status(500).json({ message: error.message });
   }
 };
@@ -240,7 +407,7 @@ export const saveAIGuestions = async (req, res) => {
 // Exam Management
 export const createExam = async (req, res) => {
   try {
-    const { title, description, category, scheduledTime, duration, questions, questionMarks, totalMarks, selectionMethod, subjects, questionCount, language = 'English', status = 'draft', allowReattempts = true, maxAttempts = 3, allowTabSwitch = false, enableNegativeMarking = false, negativeMarksPerQuestion = 0, randomizeQuestions = false, timePerQuestion = null, difficultyDistribution = { easy: 0, medium: 0, hard: 0 }, sections = [], tags = [] } = req.body;
+    const { title, description, category, subCategory, tier, scheduledTime, duration, questions, questionMarks, totalMarks, selectionMethod, subjects, questionCount, language = 'English', status = 'draft', allowReattempts = true, maxAttempts = 3, allowTabSwitch = false, enableNegativeMarking = false, negativeMarksPerQuestion = 0, randomizeQuestions = false, timePerQuestion = null, difficultyDistribution = { easy: 0, medium: 0, hard: 0 }, sections = [], tags = [], enableSectionTiming = false, enableSectionLocking = false } = req.body;
 
     // Validate language
     if (language && !['Hindi', 'English', 'Both'].includes(language)) {
@@ -259,9 +426,13 @@ export const createExam = async (req, res) => {
       });
     }
 
-    if (selectionMethod === 'manual' || (sections && sections.length > 0)) {
+    if (selectionMethod === 'manual' || (sections && sections.length > 0) || (questions && questions.length > 0)) {
       // If sections exist, use questions from sections, otherwise use manual selection
-      selectedQuestions = questionsFromSections.length > 0 ? questionsFromSections : (questions || []);
+      if (sections && sections.length > 0 && questionsFromSections.length > 0) {
+        selectedQuestions = questionsFromSections;
+      } else {
+        selectedQuestions = questions || [];
+      }
     } else if (selectionMethod === 'auto') {
       const query = { category };
       if (subjects && subjects.length > 0) {
@@ -337,6 +508,8 @@ export const createExam = async (req, res) => {
       title,
       description: description || '',
       category,
+      subCategory: subCategory || null,
+      tier: tier || null,
       scheduledTime: scheduledDate,
       duration,
       questions: selectedQuestions,
@@ -352,6 +525,8 @@ export const createExam = async (req, res) => {
       negativeMarksPerQuestion: enableNegativeMarking ? (parseFloat(negativeMarksPerQuestion) || 0) : 0,
       randomizeQuestions: randomizeQuestions || false,
       timePerQuestion: timePerQuestion ? parseInt(timePerQuestion) : null,
+      enableSectionTiming: enableSectionTiming !== undefined ? enableSectionTiming : false,
+      enableSectionLocking: enableSectionLocking !== undefined ? enableSectionLocking : false,
       difficultyDistribution: difficultyDistribution || { easy: 0, medium: 0, hard: 0 },
       sections: sections || [],
       tags: tags || [],
@@ -378,11 +553,32 @@ export const createExam = async (req, res) => {
 
 export const getExams = async (req, res) => {
   try {
-    const { status, category, includeDeleted } = req.query;
+    const { status, category, subCategory, tier, includeDeleted, page = 1, limit = 50 } = req.query;
     const query = {};
 
+    // Hierarchical filtering: match exams at the selected level and below
+    // If category is provided, it must match
+    if (category && category !== 'none' && category !== '') {
+      query.category = category;
+    }
+    
+    // If subCategory is provided, it must match exactly
+    if (subCategory && subCategory !== 'none' && subCategory !== '') {
+      query.subCategory = subCategory;
+    }
+    
+    // If tier is provided, it must match exactly
+    // This ensures exams for a specific tier only show up when viewing that tier
+    if (tier && tier !== 'none' && tier !== '') {
+      query.tier = tier;
+      // When querying by tier, we also need subCategory to match
+      // This ensures we only get exams from the correct subCategory->tier combination
+      if (subCategory && subCategory !== 'none' && subCategory !== '') {
+        query.subCategory = subCategory;
+      }
+    }
+
     if (status) query.status = status;
-    if (category) query.category = category;
     
     // Filter out soft-deleted exams by default
     // Include exams where deleted field doesn't exist (for backward compatibility)
@@ -394,12 +590,24 @@ export const getExams = async (req, res) => {
     }
 
     const exams = await Exam.find(query)
+      .populate('category', 'name code')
+      .populate('subCategory', 'name code')
+      .populate('tier', 'name code')
       .populate('questions', 'questionText marks')
       .populate('createdBy', 'name')
       .populate('deletedBy', 'name')
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 })
+      .limit(limit * 1)
+      .skip((page - 1) * limit);
 
-    res.json({ exams });
+    const total = await Exam.countDocuments(query);
+
+    res.json({ 
+      exams,
+      totalPages: Math.ceil(total / limit),
+      currentPage: page,
+      total
+    });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -421,6 +629,8 @@ export const updateExam = async (req, res) => {
     if (req.body.title) exam.title = req.body.title;
     if (req.body.description !== undefined) exam.description = req.body.description || '';
     if (req.body.category) exam.category = req.body.category;
+    if (req.body.subCategory !== undefined) exam.subCategory = req.body.subCategory || null;
+    if (req.body.tier !== undefined) exam.tier = req.body.tier || null;
     if (req.body.duration) exam.duration = req.body.duration;
     if (req.body.language) exam.language = req.body.language;
     if (req.body.questions) exam.questions = req.body.questions;
@@ -435,6 +645,8 @@ export const updateExam = async (req, res) => {
     if (req.body.negativeMarksPerQuestion !== undefined) {
       exam.negativeMarksPerQuestion = req.body.enableNegativeMarking ? (parseFloat(req.body.negativeMarksPerQuestion) || 0) : 0;
     }
+    if (req.body.enableSectionTiming !== undefined) exam.enableSectionTiming = req.body.enableSectionTiming;
+    if (req.body.enableSectionLocking !== undefined) exam.enableSectionLocking = req.body.enableSectionLocking;
     if (req.body.allowReattempts !== undefined) exam.allowReattempts = req.body.allowReattempts;
     if (req.body.maxAttempts !== undefined) exam.maxAttempts = req.body.maxAttempts;
     if (req.body.allowTabSwitch !== undefined) exam.allowTabSwitch = req.body.allowTabSwitch;
@@ -508,6 +720,58 @@ export const publishExam = async (req, res) => {
       .populate('questions', 'questionText questionTextHindi options optionsHindi marks questionImage language difficulty category subject topic');
 
     res.json({ message: 'Exam published successfully', exam: populatedExam });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+export const duplicateExam = async (req, res) => {
+  try {
+    const originalExam = await Exam.findById(req.params.id);
+    
+    if (!originalExam) {
+      return res.status(404).json({ message: 'Exam not found' });
+    }
+
+    // Create a new exam with copied data
+    const duplicatedExam = new Exam({
+      title: `${originalExam.title} (Copy)`,
+      description: originalExam.description,
+      category: originalExam.category,
+      subCategory: originalExam.subCategory,
+      tier: originalExam.tier,
+      scheduledTime: null, // Reset scheduled time
+      duration: originalExam.duration,
+      questions: originalExam.questions,
+      questionMarks: originalExam.questionMarks,
+      totalMarks: originalExam.totalMarks,
+      language: originalExam.language,
+      status: 'draft', // Always start as draft
+      allowReattempts: originalExam.allowReattempts,
+      maxAttempts: originalExam.maxAttempts,
+      allowTabSwitch: originalExam.allowTabSwitch,
+      enableNegativeMarking: originalExam.enableNegativeMarking,
+      negativeMarksPerQuestion: originalExam.negativeMarksPerQuestion,
+      randomizeQuestions: originalExam.randomizeQuestions,
+      timePerQuestion: originalExam.timePerQuestion,
+      difficultyDistribution: originalExam.difficultyDistribution,
+      sections: originalExam.sections ? JSON.parse(JSON.stringify(originalExam.sections)) : [],
+      tags: originalExam.tags ? [...originalExam.tags] : [],
+      isTemplate: false, // Don't duplicate template flag
+      templateName: null,
+      recurringSchedule: { enabled: false },
+      createdBy: req.user._id
+    });
+
+    await duplicatedExam.save();
+
+    const populatedExam = await Exam.findById(duplicatedExam._id)
+      .populate('category', 'name code')
+      .populate('subCategory', 'name code')
+      .populate('tier', 'name code')
+      .populate('questions', 'questionText questionTextHindi options optionsHindi marks questionImage language difficulty category subject topic');
+
+    res.json({ message: 'Exam duplicated successfully', exam: populatedExam });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -785,7 +1049,10 @@ export const uploadFile = async (req, res) => {
 export const getExamTemplates = async (req, res) => {
   try {
     const templates = await Exam.find({ isTemplate: true, deleted: { $ne: true } })
-      .select('title templateName category duration language marksPerQuestion randomizeQuestions timePerQuestion difficultyDistribution sections tags createdAt')
+      .select('title templateName category subCategory tier duration language marksPerQuestion randomizeQuestions timePerQuestion difficultyDistribution sections tags enableSectionTiming enableSectionLocking allowReattempts maxAttempts allowTabSwitch enableNegativeMarking negativeMarksPerQuestion createdAt')
+      .populate('category', 'name code')
+      .populate('subCategory', 'name code')
+      .populate('tier', 'name code')
       .populate('createdBy', 'name')
       .sort({ createdAt: -1 });
 

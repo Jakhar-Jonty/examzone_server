@@ -38,11 +38,31 @@ export const getExamHistory = async (req, res) => {
     const { category } = req.query;
     const query = { user: req.user._id, isCompleted: true };
 
+    // Handle category filter - could be string (old) or ObjectId (new)
+    let categoryMatch = {};
+    if (category) {
+      // Check if category is ObjectId format or string
+      const mongoose = (await import('mongoose')).default;
+      if (mongoose.Types.ObjectId.isValid(category)) {
+        categoryMatch = { category: category };
+      } else {
+        // It's a string, find category by code
+        const Category = (await import('../models/Category.js')).default;
+        const categoryDoc = await Category.findOne({ 
+          code: category.toUpperCase(),
+          isActive: true 
+        });
+        if (categoryDoc) {
+          categoryMatch = { category: categoryDoc._id };
+        }
+      }
+    }
+
     const attempts = await ExamAttempt.find(query)
       .select('_id totalScore percentage correctAnswers incorrectAnswers unattempted timeTaken attemptNumber endTime createdAt exam')
       .populate({
         path: 'exam',
-        match: category ? { category } : {},
+        match: Object.keys(categoryMatch).length > 0 ? categoryMatch : {},
         select: 'title category scheduledTime totalMarks'
       })
       .sort({ createdAt: -1 });
@@ -65,8 +85,35 @@ export const getDashboardStats = async (req, res) => {
     // MongoDB stores dates in UTC, comparisons are done in UTC
     const last24Hours = new Date(now.getTime() - 24 * 60 * 60 * 1000);
     
+    // Handle both old string categories and new ObjectId categories
+    // First, try to find categories by code/name if examPreparations contains strings
+    const Category = (await import('../models/Category.js')).default;
+    const categoryIds = [];
+    
+    if (user.examPreparations && user.examPreparations.length > 0) {
+      // Check if examPreparations contains ObjectIds or strings
+      const firstPrep = user.examPreparations[0];
+      if (typeof firstPrep === 'string') {
+        // Old format: strings like "SSC", "Banking", "HSSC"
+        // Find categories by code
+        const categories = await Category.find({ 
+          code: { $in: user.examPreparations.map(p => p.toUpperCase()) },
+          isActive: true 
+        });
+        categoryIds.push(...categories.map(c => c._id));
+      } else {
+        // New format: already ObjectIds
+        categoryIds.push(...user.examPreparations);
+      }
+    }
+    
+    // Build query - handle both old and new category formats
+    const categoryQuery = categoryIds.length > 0 
+      ? { category: { $in: categoryIds } }
+      : {}; // If no categories found, return empty (or you could remove this filter)
+    
     const availableExams = await Exam.find({
-      category: { $in: user.examPreparations },
+      ...categoryQuery,
       status: { $in: ['scheduled', 'active'] },
       scheduledTime: { 
         $gte: last24Hours, // Within last 24 hours

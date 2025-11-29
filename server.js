@@ -8,6 +8,8 @@ import examRoutes from './routes/exam.js';
 import adminRoutes from './routes/admin.js';
 import articleRoutes from './routes/article.js';
 import subscriptionRoutes from './routes/subscription.js';
+import categoryRoutes from './routes/category.js';
+import subjectRoutes from './routes/subject.js';
 
 dotenv.config();
 
@@ -29,6 +31,8 @@ app.use('/api/exams', examRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/articles', articleRoutes);
 app.use('/api/subscription', subscriptionRoutes);
+app.use('/api/categories', categoryRoutes);
+app.use('/api/subjects', subjectRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {
