@@ -589,16 +589,54 @@ export const getExams = async (req, res) => {
       ];
     }
 
-    const exams = await Exam.find(query)
+    // Check if questions should be populated (default: false for performance)
+    const includeQuestions = req.query.includeQuestions === 'true';
+    
+    // Check if we need minimal fields (for list view)
+    const minimalFields = req.query.minimal === 'true';
+    
+    const examQuery = Exam.find(query)
       .populate('category', 'name code')
       .populate('subCategory', 'name code')
       .populate('tier', 'name code')
-      .populate('questions', 'questionText marks')
       .populate('createdBy', 'name')
       .populate('deletedBy', 'name')
       .sort({ createdAt: -1 })
       .limit(limit * 1)
       .skip((page - 1) * limit);
+    
+    // For minimal fields, only select what's needed for cards
+    if (minimalFields) {
+      examQuery.select('title duration totalMarks marksPerQuestion sections status scheduledTime deleted questions createdAt');
+    }
+    
+    // Only populate questions if explicitly requested
+    if (includeQuestions) {
+      examQuery.populate('questions', 'questionText marks');
+    } else if (!minimalFields) {
+      // For non-minimal, get question count but don't populate
+      // We'll add question count after query
+    }
+    
+    const exams = await examQuery;
+    
+    // If minimal fields, add question count without populating
+    if (minimalFields) {
+      const examIds = exams.map(e => e._id);
+      const examQuestionCounts = await Exam.find({ _id: { $in: examIds } })
+        .select('_id questions')
+        .lean();
+      
+      const questionCountMap = {};
+      examQuestionCounts.forEach(exam => {
+        questionCountMap[exam._id.toString()] = exam.questions?.length || 0;
+      });
+      
+      // Add question count to each exam
+      exams.forEach(exam => {
+        exam.questions = questionCountMap[exam._id.toString()] || 0;
+      });
+    }
 
     const total = await Exam.countDocuments(query);
 
@@ -608,6 +646,33 @@ export const getExams = async (req, res) => {
       currentPage: page,
       total
     });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+export const getExamById = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { includeQuestions } = req.query;
+    
+    const examQuery = Exam.findById(id)
+      .populate('category', 'name code')
+      .populate('subCategory', 'name code')
+      .populate('tier', 'name code')
+      .populate('createdBy', 'name');
+    
+    if (includeQuestions === 'true') {
+      examQuery.populate('questions', 'questionText questionTextHindi options optionsHindi marks questionImage language difficulty category subject topic explanation');
+    }
+    
+    const exam = await examQuery;
+    
+    if (!exam) {
+      return res.status(404).json({ message: 'Exam not found' });
+    }
+    
+    res.json({ exam });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -1137,6 +1202,86 @@ export const getQuestionBankStats = async (req, res) => {
     };
 
     res.json({ stats });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// Get exam performance analytics (for existing exams)
+export const getExamPerformanceAnalytics = async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    // Get all completed attempts for this exam
+    const attempts = await ExamAttempt.find({
+      exam: id,
+      isCompleted: true
+    })
+      .populate('user', 'name email phoneNumber')
+      .sort({ percentage: -1, createdAt: -1 })
+      .lean();
+
+    if (attempts.length === 0) {
+      return res.json({
+        totalAttempts: 0,
+        completedAttempts: 0,
+        averageScore: 0,
+        averagePercentage: 0,
+        highestScore: 0,
+        highestPercentage: 0,
+        topper: null,
+        scoreDistribution: {},
+        recentAttempts: []
+      });
+    }
+
+    // Calculate statistics
+    const totalAttempts = attempts.length;
+    const totalScore = attempts.reduce((sum, a) => sum + (a.totalScore || 0), 0);
+    const totalPercentage = attempts.reduce((sum, a) => sum + (a.percentage || 0), 0);
+    const averageScore = totalScore / totalAttempts;
+    const averagePercentage = totalPercentage / totalAttempts;
+
+    // Find topper (highest score)
+    const topperAttempt = attempts[0]; // Already sorted by percentage desc
+    const topper = topperAttempt.user ? {
+      name: topperAttempt.user.name,
+      email: topperAttempt.user.email,
+      phoneNumber: topperAttempt.user.phoneNumber,
+      score: topperAttempt.totalScore,
+      percentage: topperAttempt.percentage,
+      attemptDate: topperAttempt.endTime || topperAttempt.createdAt
+    } : null;
+
+    // Score distribution (by percentage ranges)
+    const scoreDistribution = {
+      '90-100': attempts.filter(a => a.percentage >= 90 && a.percentage <= 100).length,
+      '80-89': attempts.filter(a => a.percentage >= 80 && a.percentage < 90).length,
+      '70-79': attempts.filter(a => a.percentage >= 70 && a.percentage < 80).length,
+      '60-69': attempts.filter(a => a.percentage >= 60 && a.percentage < 70).length,
+      '50-59': attempts.filter(a => a.percentage >= 50 && a.percentage < 60).length,
+      'Below 50': attempts.filter(a => a.percentage < 50).length
+    };
+
+    // Recent attempts (last 10)
+    const recentAttempts = attempts.slice(0, 10).map(attempt => ({
+      userName: attempt.user?.name || 'Unknown',
+      score: attempt.totalScore,
+      percentage: attempt.percentage,
+      date: attempt.endTime || attempt.createdAt
+    }));
+
+    res.json({
+      totalAttempts,
+      completedAttempts: totalAttempts,
+      averageScore: Math.round(averageScore * 100) / 100,
+      averagePercentage: Math.round(averagePercentage * 100) / 100,
+      highestScore: topperAttempt.totalScore,
+      highestPercentage: topperAttempt.percentage,
+      topper,
+      scoreDistribution,
+      recentAttempts
+    });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }

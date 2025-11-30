@@ -24,7 +24,9 @@ import {
   uploadFile,
   getExamTemplates,
   getQuestionBankStats,
-  getExamAnalytics
+  getExamAnalytics,
+  getExamPerformanceAnalytics,
+  getExamById
 } from '../controllers/adminController.js';
 
 const router = express.Router();
@@ -57,6 +59,9 @@ router.post('/questions/save-ai', adminAuth, saveAIGuestions);
 // Exam Management
 router.post('/exams', adminAuth, createExam);
 router.get('/exams', adminAuth, getExams);
+// More specific routes must come before parameterized routes
+router.get('/exams/:id/analytics', adminAuth, getExamPerformanceAnalytics);
+router.get('/exams/:id', adminAuth, getExamById);
 router.put('/exams/:id', adminAuth, updateExam);
 router.post('/exams/:id/publish', adminAuth, publishExam);
 router.post('/exams/:id/unpublish', adminAuth, unpublishExam);

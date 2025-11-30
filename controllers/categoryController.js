@@ -3,24 +3,91 @@ import Tier from '../models/Tier.js';
 import Question from '../models/Question.js';
 import Exam from '../models/Exam.js';
 
-// Get all categories with sub-categories
+// Get all categories with sub-categories, exam counts, and question counts
 export const getCategories = async (req, res) => {
   try {
     const categories = await Category.find({ isActive: true })
       .populate('subCategories')
-      .sort({ order: 1 });
+      .sort({ order: 1 })
+      .lean(); // Use .lean() for better performance when adding custom fields
 
     // Organize into tree structure
     const topLevelCategories = categories.filter(cat => !cat.parentCategory);
     const subCategories = categories.filter(cat => cat.parentCategory);
+
+    const categoryIds = topLevelCategories.map(cat => cat._id);
+    const subCategoryIds = subCategories.map(sub => sub._id);
+
+    // Get exam counts for all categories and subcategories in one go
+    const examCounts = await Exam.aggregate([
+      { $match: { 
+          $or: [
+            { category: { $in: categoryIds } },
+            { subCategory: { $in: subCategoryIds } }
+          ],
+          deleted: { $ne: true } // Exclude deleted exams
+      }},
+      { $group: {
+          _id: {
+            category: "$category",
+            subCategory: "$subCategory"
+          },
+          count: { $sum: 1 }
+      }}
+    ]);
+
+    // Get question counts for all categories and subcategories in one go
+    const questionCounts = await Question.aggregate([
+      { $match: { 
+          $or: [
+            { category: { $in: categoryIds } },
+            { subCategory: { $in: subCategoryIds } }
+          ],
+          deleted: { $ne: true } // Exclude deleted questions
+      }},
+      { $group: {
+          _id: {
+            category: "$category",
+            subCategory: "$subCategory"
+          },
+          count: { $sum: 1 }
+      }}
+    ]);
+
+    // Create maps for quick lookup
+    const examCountMap = {};
+    examCounts.forEach(item => {
+      if (item._id.category && !item._id.subCategory) {
+        examCountMap[`cat_${item._id.category}`] = (examCountMap[`cat_${item._id.category}`] || 0) + item.count;
+      }
+      if (item._id.subCategory) {
+        examCountMap[`subcat_${item._id.subCategory}`] = (examCountMap[`subcat_${item._id.subCategory}`] || 0) + item.count;
+      }
+    });
+
+    const questionCountMap = {};
+    questionCounts.forEach(item => {
+      if (item._id.category && !item._id.subCategory) {
+        questionCountMap[`cat_${item._id.category}`] = (questionCountMap[`cat_${item._id.category}`] || 0) + item.count;
+      }
+      if (item._id.subCategory) {
+        questionCountMap[`subcat_${item._id.subCategory}`] = (questionCountMap[`subcat_${item._id.subCategory}`] || 0) + item.count;
+      }
+    });
 
     const tree = topLevelCategories.map(category => {
       const subs = subCategories.filter(sub => 
         sub.parentCategory && sub.parentCategory.toString() === category._id.toString()
       );
       return {
-        ...category.toObject(),
-        subCategories: subs
+        ...category,
+        examCount: examCountMap[`cat_${category._id}`] || 0,
+        questionCount: questionCountMap[`cat_${category._id}`] || 0,
+        subCategories: subs.map(sub => ({
+          ...sub,
+          examCount: examCountMap[`subcat_${sub._id}`] || 0,
+          questionCount: questionCountMap[`subcat_${sub._id}`] || 0
+        }))
       };
     });
 
