@@ -110,9 +110,40 @@ export const getQuestions = async (req, res) => {
     const { 
       category, subCategory, tier, subject, topic, subTopic, difficulty, questionType,
       isPYQ, sourceExam, sourceYear, paperSet, chapter,
+      ids, // Support fetching by specific IDs (comma-separated)
       page = 1, limit = 50 
     } = req.query;
     const query = {};
+    
+    // If ids parameter is provided, fetch specific questions by ID
+    if (ids) {
+      const idArray = ids.split(',').map(id => id.trim()).filter(id => id);
+      if (idArray.length > 0) {
+        // Convert string IDs to ObjectIds for MongoDB query
+        const objectIds = idArray.map(id => {
+          try {
+            return mongoose.Types.ObjectId.isValid(id) ? new mongoose.Types.ObjectId(id) : id;
+          } catch (e) {
+            return id;
+          }
+        });
+        query._id = { $in: objectIds };
+        // When fetching by IDs, ignore pagination and return all matching questions
+        const questions = await Question.find(query)
+          .populate('category', 'name code')
+          .populate('subCategory', 'name code')
+          .populate('tier', 'name code')
+          .populate('createdBy', 'name')
+          .sort({ createdAt: -1 });
+        
+        return res.json({
+          questions,
+          totalPages: 1,
+          currentPage: 1,
+          total: questions.length
+        });
+      }
+    }
 
     // Hierarchical filtering: match questions at the selected level and below
     // If category is provided, it must match
@@ -193,6 +224,24 @@ export const getQuestions = async (req, res) => {
       currentPage: page,
       total
     });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+export const getQuestionById = async (req, res) => {
+  try {
+    const question = await Question.findById(req.params.id)
+      .populate('category', 'name code')
+      .populate('subCategory', 'name code')
+      .populate('tier', 'name code')
+      .populate('createdBy', 'name');
+
+    if (!question) {
+      return res.status(404).json({ message: 'Question not found' });
+    }
+
+    res.json({ question });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -417,18 +466,27 @@ export const createExam = async (req, res) => {
     let selectedQuestions = [];
 
     // Handle sections - if sections are provided, collect questions from all sections
+    // Also ensure sections have questionCount preserved (important for templates)
     let questionsFromSections = [];
+    let processedSections = sections || [];
     if (sections && Array.isArray(sections) && sections.length > 0) {
       sections.forEach(section => {
         if (section.questions && Array.isArray(section.questions)) {
           questionsFromSections = [...questionsFromSections, ...section.questions];
         }
       });
+      // Ensure each section has questionCount preserved (for templates)
+      processedSections = sections.map(section => ({
+        ...section,
+        questionCount: section.questionCount !== undefined && section.questionCount !== null
+          ? parseInt(section.questionCount) || 0
+          : (section.questions?.length || 0)
+      }));
     }
 
-    if (selectionMethod === 'manual' || (sections && sections.length > 0) || (questions && questions.length > 0)) {
+    if (selectionMethod === 'manual' || (processedSections && processedSections.length > 0) || (questions && questions.length > 0)) {
       // If sections exist, use questions from sections, otherwise use manual selection
-      if (sections && sections.length > 0 && questionsFromSections.length > 0) {
+      if (processedSections && processedSections.length > 0 && questionsFromSections.length > 0) {
         selectedQuestions = questionsFromSections;
       } else {
         selectedQuestions = questions || [];
@@ -450,6 +508,7 @@ export const createExam = async (req, res) => {
       selectedQuestions = shuffled.slice(0, questionCount || 50).map(q => q._id);
     }
 
+    // Validate questions are selected (templates are now handled separately)
     if (selectedQuestions.length === 0) {
       return res.status(400).json({ message: 'No questions selected' });
     }
@@ -504,6 +563,16 @@ export const createExam = async (req, res) => {
       }
     }
 
+    // For exams with section-wise timing, calculate duration from sections if not provided
+    let finalDuration = duration;
+    if (enableSectionTiming && processedSections && processedSections.length > 0 && (!duration || duration === 0)) {
+      finalDuration = processedSections.reduce((sum, section) => sum + (parseInt(section.timeLimit) || 0), 0);
+    }
+    // Ensure duration is set (required field) - default to 60 minutes for exams
+    if (!finalDuration || finalDuration === 0) {
+      finalDuration = duration || 60; // Default to 60 minutes for exams
+    }
+
     const exam = new Exam({
       title,
       description: description || '',
@@ -511,7 +580,7 @@ export const createExam = async (req, res) => {
       subCategory: subCategory || null,
       tier: tier || null,
       scheduledTime: scheduledDate,
-      duration,
+      duration: parseInt(finalDuration) || 0,
       questions: selectedQuestions,
       questionMarks: Object.keys(normalizedQuestionMarks).length > 0 ? normalizedQuestionMarks : {},
       totalMarks: calculatedTotalMarks,
@@ -528,10 +597,8 @@ export const createExam = async (req, res) => {
       enableSectionTiming: enableSectionTiming !== undefined ? enableSectionTiming : false,
       enableSectionLocking: enableSectionLocking !== undefined ? enableSectionLocking : false,
       difficultyDistribution: difficultyDistribution || { easy: 0, medium: 0, hard: 0 },
-      sections: sections || [],
+      sections: processedSections,
       tags: tags || [],
-      isTemplate: req.body.isTemplate || false,
-      templateName: req.body.templateName || null,
       recurringSchedule: req.body.recurringSchedule || { enabled: false },
       createdBy: req.user._id
     });

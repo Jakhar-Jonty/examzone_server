@@ -5,6 +5,7 @@ import Article from '../models/Article.js';
 import Question from '../models/Question.js';
 import SubjectTopic from '../models/SubjectTopic.js';
 import SavedQuestion from '../models/SavedQuestion.js';
+import Category from '../models/Category.js';
 
 export const getProfile = async (req, res) => {
   try {
@@ -35,7 +36,17 @@ export const updateProfile = async (req, res) => {
 
 export const getExamHistory = async (req, res) => {
   try {
-    const { category } = req.query;
+    const { 
+      category, 
+      search = '', 
+      sortBy = 'date', 
+      sortOrder = 'desc',
+      startDate = '',
+      endDate = '',
+      page = 1,
+      limit = 12
+    } = req.query;
+
     const query = { user: req.user._id, isCompleted: true };
 
     // Handle category filter - could be string (old) or ObjectId (new)
@@ -47,7 +58,6 @@ export const getExamHistory = async (req, res) => {
         categoryMatch = { category: category };
       } else {
         // It's a string, find category by code
-        const Category = (await import('../models/Category.js')).default;
         const categoryDoc = await Category.findOne({ 
           code: category.toUpperCase(),
           isActive: true 
@@ -58,19 +68,88 @@ export const getExamHistory = async (req, res) => {
       }
     }
 
+    // Build exam query for search and category filter
+    const examQuery = {};
+    if (Object.keys(categoryMatch).length > 0) {
+      examQuery.category = categoryMatch.category;
+    }
+    if (search) {
+      examQuery.title = { $regex: search, $options: 'i' };
+    }
+
+    // Find matching exams first
+    const matchingExams = await Exam.find(examQuery).select('_id').lean();
+    const examIds = matchingExams.map(exam => exam._id);
+
+    // Update query to filter by exam IDs
+    if (examIds.length > 0) {
+      query.exam = { $in: examIds };
+    } else if (search || Object.keys(categoryMatch).length > 0) {
+      // No matching exams, return empty result
+      return res.json({
+        attempts: [],
+        pagination: {
+          currentPage: parseInt(page),
+          totalPages: 0,
+          totalAttempts: 0,
+          limit: parseInt(limit)
+        }
+      });
+    }
+
+    // Date range filter
+    if (startDate || endDate) {
+      query.endTime = {};
+      if (startDate) {
+        query.endTime.$gte = new Date(startDate);
+      }
+      if (endDate) {
+        const endOfDay = new Date(endDate);
+        endOfDay.setHours(23, 59, 59, 999);
+        query.endTime.$lte = endOfDay;
+      }
+    }
+
+    // Get total count before pagination
+    const total = await ExamAttempt.countDocuments(query);
+
+    // Sort options
+    const sortOptions = {};
+    switch (sortBy) {
+      case 'date':
+        sortOptions.endTime = sortOrder === 'asc' ? 1 : -1;
+        sortOptions.createdAt = sortOrder === 'asc' ? 1 : -1;
+        break;
+      case 'score':
+        sortOptions.totalScore = sortOrder === 'asc' ? 1 : -1;
+        break;
+      case 'percentage':
+        sortOptions.percentage = sortOrder === 'asc' ? 1 : -1;
+        break;
+      default:
+        sortOptions.createdAt = -1;
+    }
+
+    // Get attempts with pagination
     const attempts = await ExamAttempt.find(query)
       .select('_id totalScore percentage correctAnswers incorrectAnswers unattempted timeTaken attemptNumber endTime createdAt exam')
       .populate({
         path: 'exam',
-        match: Object.keys(categoryMatch).length > 0 ? categoryMatch : {},
         select: 'title category scheduledTime totalMarks'
       })
-      .sort({ createdAt: -1 });
+      .sort(sortOptions)
+      .limit(parseInt(limit))
+      .skip((parseInt(page) - 1) * parseInt(limit));
 
-    // Filter out attempts where exam doesn't match category filter
-    const filteredAttempts = attempts.filter(attempt => attempt.exam);
-
-    res.json({ attempts: filteredAttempts });
+    res.json({
+      attempts: attempts || [],
+      pagination: {
+        currentPage: parseInt(page),
+        totalPages: Math.ceil(total / limit),
+        totalAttempts: total,
+        limit: parseInt(limit)
+      }
+    });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -262,9 +341,29 @@ export const getAllExams = async (req, res) => {
       sortOrder = 'desc'
     } = req.query;
 
+    // Handle both old string categories and new ObjectId categories
+    const categoryIds = [];
+    
+    if (user.examPreparations && user.examPreparations.length > 0) {
+      // Check if examPreparations contains ObjectIds or strings
+      const firstPrep = user.examPreparations[0];
+      if (typeof firstPrep === 'string' || firstPrep instanceof String) {
+        // Old format: strings like "SSC", "Banking", "HSSC"
+        // Find categories by code
+        const categories = await Category.find({ 
+          code: { $in: user.examPreparations.map(p => p.toUpperCase()) },
+          isActive: true 
+        });
+        categoryIds.push(...categories.map(c => c._id));
+      } else {
+        // New format: already ObjectIds
+        categoryIds.push(...user.examPreparations);
+      }
+    }
+
     // Build query
     const query = {
-      category: { $in: user.examPreparations },
+      category: categoryIds.length > 0 ? { $in: categoryIds } : { $in: [] }, // Empty if no categories
       status: { $in: ['scheduled', 'active'] },
       scheduledTime: { $lte: now }, // Already started
       $or: [
@@ -279,9 +378,36 @@ export const getAllExams = async (req, res) => {
       query.title = { $regex: search, $options: 'i' };
     }
 
-    // Category filter
-    if (category && user.examPreparations.includes(category)) {
-      query.category = category;
+    // Category filter - convert category code/name to ObjectId
+    if (category) {
+      // Check if category is already an ObjectId
+      const mongoose = (await import('mongoose')).default;
+      let categoryId = null;
+      
+      if (mongoose.Types.ObjectId.isValid(category)) {
+        // It's already an ObjectId
+        categoryId = new mongoose.Types.ObjectId(category);
+      } else {
+        // Try to find category by code or name
+        const categoryDoc = await Category.findOne({
+          $or: [
+            { code: category.toUpperCase() },
+            { name: { $regex: new RegExp(`^${category}$`, 'i') } }
+          ],
+          isActive: true
+        });
+        
+        if (categoryDoc) {
+          categoryId = categoryDoc._id;
+        }
+      }
+      
+      if (categoryId) {
+        // Only apply filter if user has this category in their examPreparations
+        if (categoryIds.some(id => id.toString() === categoryId.toString())) {
+          query.category = categoryId;
+        }
+      }
     }
 
     // Date range filter

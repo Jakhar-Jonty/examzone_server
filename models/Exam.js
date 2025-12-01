@@ -55,6 +55,7 @@ const examSchema = new mongoose.Schema({
       ref: 'Question'
     }],
     order: { type: Number, default: 0 },
+    questionCount: { type: Number, default: 0 }, // Target number of questions for this section (used in templates and exam creation)
     // Section-specific settings
     timeLimit: { type: Number }, // Time limit for this section in minutes (optional)
     marksPerQuestion: { type: Number }, // Marks per question in this section
