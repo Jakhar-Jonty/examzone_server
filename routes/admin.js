@@ -38,6 +38,20 @@ import {
   restoreTemplate,
   duplicateTemplate
 } from '../controllers/templateController.js';
+import {
+  createWordOfDay,
+  generateAIWordOfDay,
+  getWordsOfDay,
+  getWordOfDayById,
+  updateWordOfDay,
+  deleteWordOfDay,
+  createMotivationalQuote,
+  generateAIMotivationalQuote,
+  getMotivationalQuotes,
+  getMotivationalQuoteById,
+  updateMotivationalQuote,
+  deleteMotivationalQuote
+} from '../controllers/contentController.js';
 
 const router = express.Router();
 
@@ -113,6 +127,22 @@ router.get('/cloudinary-config', adminAuth, (req, res) => {
     has_api_secret: config.has_api_secret,
   });
 });
+
+// Word of the Day Management
+router.post('/words-of-day', adminAuth, createWordOfDay);
+router.post('/words-of-day/generate-ai', adminAuth, generateAIWordOfDay);
+router.get('/words-of-day', adminAuth, getWordsOfDay);
+router.get('/words-of-day/:id', adminAuth, getWordOfDayById);
+router.put('/words-of-day/:id', adminAuth, updateWordOfDay);
+router.delete('/words-of-day/:id', adminAuth, deleteWordOfDay);
+
+// Motivational Quote Management
+router.post('/motivational-quotes', adminAuth, createMotivationalQuote);
+router.post('/motivational-quotes/generate-ai', adminAuth, generateAIMotivationalQuote);
+router.get('/motivational-quotes', adminAuth, getMotivationalQuotes);
+router.get('/motivational-quotes/:id', adminAuth, getMotivationalQuoteById);
+router.put('/motivational-quotes/:id', adminAuth, updateMotivationalQuote);
+router.delete('/motivational-quotes/:id', adminAuth, deleteMotivationalQuote);
 
 export default router;
 

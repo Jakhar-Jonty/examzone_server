@@ -14,6 +14,10 @@ import {
   updateSavedQuestion,
   checkSavedQuestions
 } from '../controllers/userController.js';
+import {
+  getCurrentWordOfDay,
+  getCurrentMotivationalQuote
+} from '../controllers/contentController.js';
 
 const router = express.Router();
 
@@ -31,6 +35,10 @@ router.delete('/questions/unsave/:questionId', authenticate, unsaveQuestion);
 router.get('/questions/saved', authenticate, getSavedQuestions);
 router.put('/questions/saved/:savedQuestionId', authenticate, updateSavedQuestion);
 router.post('/questions/check-saved', authenticate, checkSavedQuestions);
+
+// Daily Content routes
+router.get('/word-of-day', authenticate, getCurrentWordOfDay);
+router.get('/motivational-quote', authenticate, getCurrentMotivationalQuote);
 
 export default router;
 
