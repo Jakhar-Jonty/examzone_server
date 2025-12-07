@@ -33,6 +33,9 @@ const categorySchema = new mongoose.Schema({
   icon: { 
     type: String // Icon name or URL for UI
   },
+  logo: {
+    type: String // Logo/image URL (uploaded to Cloudinary)
+  },
   color: { 
     type: String // Hex color code for UI
   },
@@ -49,12 +52,14 @@ const categorySchema = new mongoose.Schema({
     default: Date.now 
   }
 }, {
-  timestamps: true
+  timestamps: true,
+  toJSON: { virtuals: true },
+  toObject: { virtuals: true }
 });
 
 // Index for efficient queries
+// Note: code field already has unique: true which creates an index
 categorySchema.index({ parentCategory: 1, order: 1 });
-categorySchema.index({ code: 1 });
 categorySchema.index({ isActive: 1 });
 
 // Virtual for sub-categories

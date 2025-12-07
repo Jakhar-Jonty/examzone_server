@@ -37,8 +37,7 @@ const wordOfDaySchema = new mongoose.Schema({
   },
   scheduledDate: { 
     type: Date, 
-    required: true,
-    index: true
+    required: true
   },
   status: { 
     type: String, 

@@ -54,7 +54,7 @@ const subjectSchema = new mongoose.Schema({
   }
 });
 
-subjectSchema.index({ name: 1 }, { unique: true });
+// Note: name field already has unique: true which creates an index
 subjectSchema.index({ isActive: 1, order: 1 });
 
 subjectSchema.pre('save', function(next) {

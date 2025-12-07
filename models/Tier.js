@@ -34,6 +34,9 @@ const tierSchema = new mongoose.Schema({
     type: String,
     trim: true
   },
+  image: {
+    type: String // Image URL (uploaded to Cloudinary)
+  },
   createdBy: { 
     type: mongoose.Schema.Types.ObjectId, 
     ref: 'User' 

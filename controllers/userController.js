@@ -299,8 +299,176 @@ export const getDashboardStats = async (req, res) => {
     const { getStreakInfo } = await import('../utils/streakManager.js');
     const streakInfo = await getStreakInfo(user._id);
 
+    // Get recent exam results (last 5 attempts)
+    let recentAttempts = [];
+    try {
+      recentAttempts = await ExamAttempt.find({
+        user: user._id,
+        isCompleted: true,
+        endTime: { $exists: true, $ne: null } // Only get attempts with endTime
+      })
+        .select('_id totalScore percentage correctAnswers incorrectAnswers unattempted timeTaken attemptNumber endTime createdAt exam')
+        .populate({
+          path: 'exam',
+          select: 'title category subCategory tier scheduledTime totalMarks',
+          populate: [
+            { path: 'category', select: 'name code' },
+            { path: 'subCategory', select: 'name code' },
+            { path: 'tier', select: 'name code' }
+          ],
+          match: { deleted: { $ne: true } } // Only include non-deleted exams
+        })
+        .sort({ endTime: -1, createdAt: -1 })
+        .limit(5)
+        .lean();
+      
+      // Filter out attempts where exam was deleted or not found
+      recentAttempts = recentAttempts.filter(attempt => attempt.exam);
+    } catch (error) {
+      console.error('Error fetching recent exam results:', error);
+      recentAttempts = [];
+    }
+
+    // Get today's published exams (exams published today)
+    let todaysExamsWithAttempts = [];
+    try {
+      const startOfToday = new Date(now);
+      startOfToday.setHours(0, 0, 0, 0);
+      const endOfToday = new Date(now);
+      endOfToday.setHours(23, 59, 59, 999);
+
+      const todaysPublishedExams = await Exam.find({
+        ...categoryQuery,
+        status: { $in: ['scheduled', 'active'] },
+        scheduledTime: {
+          $gte: startOfToday,
+          $lte: endOfToday
+        },
+        $or: [
+          { expiresAt: { $gte: now } },
+          { expiresAt: null },
+          { expiresAt: { $exists: false } }
+        ],
+        deleted: { $ne: true }
+      })
+        .select('_id title category subCategory tier scheduledTime duration totalMarks status')
+        .populate('category', 'name code logo')
+        .populate('subCategory', 'name code logo')
+        .populate('tier', 'name code image')
+        .sort({ scheduledTime: -1 })
+        .limit(10)
+        .lean();
+
+      // Get attempt info for today's exams
+      const todaysExamIds = todaysPublishedExams.map(exam => exam._id);
+      let todaysAttempts = [];
+      if (todaysExamIds.length > 0) {
+        todaysAttempts = await ExamAttempt.find({
+          user: user._id,
+          exam: { $in: todaysExamIds }
+        }).select('exam isCompleted isPaused _id').lean();
+      }
+
+      const todaysAttemptMap = {};
+      todaysAttempts.forEach(attempt => {
+        todaysAttemptMap[attempt.exam.toString()] = {
+          attemptId: attempt._id,
+          isCompleted: attempt.isCompleted,
+          isPaused: attempt.isPaused
+        };
+      });
+
+      todaysExamsWithAttempts = todaysPublishedExams.map(exam => ({
+        ...exam,
+        isAttempted: todaysAttemptMap[exam._id.toString()]?.isCompleted || false,
+        isPaused: todaysAttemptMap[exam._id.toString()]?.isPaused || false,
+        attemptId: todaysAttemptMap[exam._id.toString()]?.attemptId || null
+      }));
+    } catch (error) {
+      console.error('Error fetching today\'s published exams:', error);
+      todaysExamsWithAttempts = [];
+    }
+
+    // Get all active categories with their subcategories
+    const allCategories = await Category.find({ isActive: true, parentCategory: null })
+      .populate('subCategories')
+      .sort({ order: 1 })
+      .lean();
+
+    // Get exam and question counts for categories
+    const allCategoryIds = allCategories.map(c => c._id);
+    const subCategoryIds = allCategories.flatMap(c => 
+      (c.subCategories || []).map(sc => sc._id)
+    );
+
+    const examCounts = await Exam.aggregate([
+      { $match: { 
+          $or: [
+            { category: { $in: allCategoryIds } },
+            { subCategory: { $in: subCategoryIds } }
+          ],
+          deleted: { $ne: true }
+      }},
+      { $group: {
+          _id: {
+            category: "$category",
+            subCategory: "$subCategory"
+          },
+          count: { $sum: 1 }
+      }}
+    ]);
+
+    const questionCounts = await Question.aggregate([
+      { $match: { 
+          $or: [
+            { category: { $in: allCategoryIds } },
+            { subCategory: { $in: subCategoryIds } }
+          ],
+          deleted: { $ne: true }
+      }},
+      { $group: {
+          _id: {
+            category: "$category",
+            subCategory: "$subCategory"
+          },
+          count: { $sum: 1 }
+      }}
+    ]);
+
+    const examCountMap = {};
+    examCounts.forEach(item => {
+      if (item._id.category && !item._id.subCategory) {
+        examCountMap[`cat_${item._id.category}`] = (examCountMap[`cat_${item._id.category}`] || 0) + item.count;
+      }
+      if (item._id.subCategory) {
+        examCountMap[`subcat_${item._id.subCategory}`] = (examCountMap[`subcat_${item._id.subCategory}`] || 0) + item.count;
+      }
+    });
+
+    const categoryQuestionCountMap = {};
+    questionCounts.forEach(item => {
+      if (item._id.category && !item._id.subCategory) {
+        categoryQuestionCountMap[`cat_${item._id.category}`] = (categoryQuestionCountMap[`cat_${item._id.category}`] || 0) + item.count;
+      }
+      if (item._id.subCategory) {
+        categoryQuestionCountMap[`subcat_${item._id.subCategory}`] = (categoryQuestionCountMap[`subcat_${item._id.subCategory}`] || 0) + item.count;
+      }
+    });
+
+    const categoriesWithCounts = allCategories.map(category => ({
+      ...category,
+      examCount: examCountMap[`cat_${category._id}`] || 0,
+      questionCount: categoryQuestionCountMap[`cat_${category._id}`] || 0,
+      subCategories: (category.subCategories || []).map(sub => ({
+        ...sub,
+        examCount: examCountMap[`subcat_${sub._id}`] || 0,
+        questionCount: categoryQuestionCountMap[`subcat_${sub._id}`] || 0
+      }))
+    }));
+
     res.json({
       availableExams: examsWithAttempts,
+      categories: categoriesWithCounts,
       stats: {
         totalAttempts,
         averageScore: averageScore.toFixed(2),
@@ -314,7 +482,9 @@ export const getDashboardStats = async (req, res) => {
         lastStudyDate: null,
         totalStudyDays: 0,
         badges: []
-      }
+      },
+      recentExamResults: recentAttempts || [],
+      todaysPublishedExams: todaysExamsWithAttempts || []
     });
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -332,13 +502,17 @@ export const getAllExams = async (req, res) => {
       limit = 12,
       search = '',
       category = '',
+      subCategory = '',
+      tier = '',
       startDate = '',
       endDate = '',
       language = '',
       subject = '',
       topic = '',
       sortBy = 'scheduledTime',
-      sortOrder = 'desc'
+      sortOrder = 'desc',
+      status = '',
+      minimal = 'false'
     } = req.query;
 
     // Handle both old string categories and new ObjectId categories
@@ -364,14 +538,21 @@ export const getAllExams = async (req, res) => {
     // Build query
     const query = {
       category: categoryIds.length > 0 ? { $in: categoryIds } : { $in: [] }, // Empty if no categories
-      status: { $in: ['scheduled', 'active'] },
       scheduledTime: { $lte: now }, // Already started
       $or: [
         { expiresAt: { $gte: now } },
         { expiresAt: null },
         { expiresAt: { $exists: false } }
-      ]
+      ],
+      deleted: { $ne: true }
     };
+
+    // Status filter - default to active/scheduled if not specified
+    if (status && status !== '') {
+      query.status = status;
+    } else {
+      query.status = { $in: ['scheduled', 'active'] };
+    }
 
     // Search filter
     if (search) {
@@ -406,6 +587,28 @@ export const getAllExams = async (req, res) => {
         // Only apply filter if user has this category in their examPreparations
         if (categoryIds.some(id => id.toString() === categoryId.toString())) {
           query.category = categoryId;
+        }
+      }
+    }
+
+    // SubCategory filter
+    if (subCategory && subCategory !== 'none' && subCategory !== '') {
+      const mongoose = (await import('mongoose')).default;
+      if (mongoose.Types.ObjectId.isValid(subCategory)) {
+        query.subCategory = new mongoose.Types.ObjectId(subCategory);
+      }
+    }
+
+    // Tier filter
+    if (tier && tier !== 'none' && tier !== '') {
+      const mongoose = (await import('mongoose')).default;
+      if (mongoose.Types.ObjectId.isValid(tier)) {
+        query.tier = new mongoose.Types.ObjectId(tier);
+        // When querying by tier, also ensure subCategory matches if provided
+        if (subCategory && subCategory !== 'none' && subCategory !== '') {
+          if (mongoose.Types.ObjectId.isValid(subCategory)) {
+            query.subCategory = new mongoose.Types.ObjectId(subCategory);
+          }
         }
       }
     }
@@ -455,21 +658,25 @@ export const getAllExams = async (req, res) => {
 
     // Get total count
     const total = await Exam.countDocuments(query);
-
-    // Get exams with pagination - don't populate questions, only need count
-    // Explicitly include expiresAt field to ensure it's returned (even if null)
-    // Add deleted filter to query
-    query.$or = [
-      { deleted: false },
-      { deleted: { $exists: false } }
-    ];
     
-    const exams = await Exam.find(query)
-      .select('-questions') // Exclude questions array to avoid loading
-      .select('+expiresAt') // Explicitly include expiresAt
+    // For minimal fields, only select what's needed
+    let selectFields = '';
+    if (minimal === 'true') {
+      selectFields = 'title duration totalMarks status scheduledTime expiresAt category subCategory tier';
+    } else {
+      selectFields = '-questions'; // Exclude questions array to avoid loading
+    }
+
+    const examQuery = Exam.find(query)
+      .populate('category', 'name code')
+      .populate('subCategory', 'name code')
+      .populate('tier', 'name code')
+      .select(selectFields)
       .sort(sortOptions)
       .limit(limit * 1)
       .skip((page - 1) * limit);
+    
+    const exams = await examQuery;
     
     // Get question counts separately (more efficient)
     const examIds = exams.map(exam => exam._id);

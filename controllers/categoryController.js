@@ -101,14 +101,92 @@ export const getCategories = async (req, res) => {
 export const getCategory = async (req, res) => {
   try {
     const category = await Category.findById(req.params.id)
-      .populate('subCategories')
-      .populate('parentCategory');
+      .populate('parentCategory')
+      .lean();
 
     if (!category) {
       return res.status(404).json({ message: 'Category not found' });
     }
 
-    res.json({ category });
+    // Manually fetch subcategories
+    const subCategories = await Category.find({ 
+      parentCategory: category._id,
+      isActive: true 
+    })
+      .sort({ order: 1 })
+      .lean();
+
+    // Get exam and question counts for category and subcategories
+    const categoryId = category._id;
+    const subCategoryIds = subCategories.map(sc => sc._id);
+
+    const examCounts = await Exam.aggregate([
+      { $match: { 
+          $or: [
+            { category: categoryId },
+            { subCategory: { $in: subCategoryIds } }
+          ],
+          deleted: { $ne: true }
+      }},
+      { $group: {
+          _id: {
+            category: "$category",
+            subCategory: "$subCategory"
+          },
+          count: { $sum: 1 }
+      }}
+    ]);
+
+    const questionCounts = await Question.aggregate([
+      { $match: { 
+          $or: [
+            { category: categoryId },
+            { subCategory: { $in: subCategoryIds } }
+          ],
+          deleted: { $ne: true }
+      }},
+      { $group: {
+          _id: {
+            category: "$category",
+            subCategory: "$subCategory"
+          },
+          count: { $sum: 1 }
+      }}
+    ]);
+
+    const examCountMap = {};
+    examCounts.forEach(item => {
+      if (item._id.category && !item._id.subCategory) {
+        examCountMap[`cat_${item._id.category}`] = (examCountMap[`cat_${item._id.category}`] || 0) + item.count;
+      }
+      if (item._id.subCategory) {
+        examCountMap[`subcat_${item._id.subCategory}`] = (examCountMap[`subcat_${item._id.subCategory}`] || 0) + item.count;
+      }
+    });
+
+    const questionCountMap = {};
+    questionCounts.forEach(item => {
+      if (item._id.category && !item._id.subCategory) {
+        questionCountMap[`cat_${item._id.category}`] = (questionCountMap[`cat_${item._id.category}`] || 0) + item.count;
+      }
+      if (item._id.subCategory) {
+        questionCountMap[`subcat_${item._id.subCategory}`] = (questionCountMap[`subcat_${item._id.subCategory}`] || 0) + item.count;
+      }
+    });
+
+    // Add counts to category and subcategories
+    const categoryWithCounts = {
+      ...category,
+      examCount: examCountMap[`cat_${categoryId}`] || 0,
+      questionCount: questionCountMap[`cat_${categoryId}`] || 0,
+      subCategories: subCategories.map(sub => ({
+        ...sub,
+        examCount: examCountMap[`subcat_${sub._id}`] || 0,
+        questionCount: questionCountMap[`subcat_${sub._id}`] || 0
+      }))
+    };
+
+    res.json({ category: categoryWithCounts });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -125,12 +203,19 @@ export const createCategory = async (req, res) => {
       return res.status(400).json({ message: 'Category code already exists' });
     }
 
+    // Handle logo upload
+    let logoUrl = null;
+    if (req.file) {
+      logoUrl = req.file.path; // Cloudinary URL
+    }
+
     const category = new Category({
       name,
       code: code.toUpperCase(),
       description,
       order: order || 0,
       icon,
+      logo: logoUrl,
       color,
       parentCategory: null,
       createdBy: req.user._id
@@ -160,6 +245,12 @@ export const createSubCategory = async (req, res) => {
       return res.status(400).json({ message: 'Category code already exists' });
     }
 
+    // Handle logo upload
+    let logoUrl = null;
+    if (req.file) {
+      logoUrl = req.file.path; // Cloudinary URL
+    }
+
     const subCategory = new Category({
       name,
       code: code.toUpperCase(),
@@ -167,6 +258,7 @@ export const createSubCategory = async (req, res) => {
       parentCategory: parentCategoryId,
       order: order || 0,
       icon,
+      logo: logoUrl,
       color,
       createdBy: req.user._id
     });
@@ -181,11 +273,18 @@ export const createSubCategory = async (req, res) => {
 // Update category
 export const updateCategory = async (req, res) => {
   try {
-    const { name, description, order, icon, color, isActive } = req.body;
+    const { name, description, order, icon, color, isActive, logo } = req.body;
     const category = await Category.findById(req.params.id);
 
     if (!category) {
       return res.status(404).json({ message: 'Category not found' });
+    }
+
+    // Handle logo upload - if new file uploaded, use it; otherwise keep existing or use provided URL
+    if (req.file) {
+      category.logo = req.file.path; // New upload
+    } else if (logo !== undefined) {
+      category.logo = logo; // URL provided (could be empty string to remove)
     }
 
     if (name) category.name = name;
@@ -287,12 +386,19 @@ export const createTier = async (req, res) => {
       }
     }
 
+    // Handle image upload
+    let imageUrl = null;
+    if (req.file) {
+      imageUrl = req.file.path; // Cloudinary URL
+    }
+
     const tier = new Tier({
       name,
       code: code.toUpperCase(),
       category: categoryId,
       subCategory: subCategoryId || null,
       description,
+      image: imageUrl,
       order: order || 0,
       createdBy: req.user._id
     });
@@ -307,11 +413,18 @@ export const createTier = async (req, res) => {
 // Update tier
 export const updateTier = async (req, res) => {
   try {
-    const { name, description, order, isActive } = req.body;
+    const { name, description, order, isActive, image } = req.body;
     const tier = await Tier.findById(req.params.id);
 
     if (!tier) {
       return res.status(404).json({ message: 'Tier not found' });
+    }
+
+    // Handle image upload - if new file uploaded, use it; otherwise keep existing or use provided URL
+    if (req.file) {
+      tier.image = req.file.path; // New upload
+    } else if (image !== undefined) {
+      tier.image = image; // URL provided (could be empty string to remove)
     }
 
     if (name) tier.name = name;
