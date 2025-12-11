@@ -82,6 +82,7 @@ export const verifyOTPController = async (req, res) => {
 
 export const loginController = async (req, res) => {
   try {
+    console.log('Login request received');
     const { phoneNumber, password } = req.body;
     
     if (!phoneNumber || !password) {

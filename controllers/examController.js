@@ -183,7 +183,10 @@ export const getExamDetails = async (req, res) => {
 
     // Calculate attempt count
     const attemptCount = completedAttempts.length;
-    const canReattempt = exam.allowReattempts && attemptCount < exam.maxAttempts;
+    // Default to allowReattempts=true and maxAttempts=3 if not set
+    const allowReattempts = exam.allowReattempts !== false; // true if undefined or true
+    const maxAttempts = exam.maxAttempts || 3;
+    const canReattempt = allowReattempts && attemptCount < maxAttempts;
 
     res.json({ 
       exam,
@@ -194,7 +197,8 @@ export const getExamDetails = async (req, res) => {
         pausedAttemptId: pausedAttempt?._id,
         attemptCount,
         canReattempt,
-        maxAttempts: exam.maxAttempts,
+        maxAttempts: maxAttempts,
+        attemptsRemaining: maxAttempts - attemptCount,
         bestScore,
         bestAttemptId,
         latestScore: latestAttempt?.totalScore || null,

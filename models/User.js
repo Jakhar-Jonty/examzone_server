@@ -53,6 +53,9 @@ const userSchema = new mongoose.Schema({
     badgeName: { type: String, required: true },
     earnedAt: { type: Date, default: Date.now }
   }],
+  profileImage: {
+    type: String // Image URL (uploaded to Cloudinary)
+  },
   isVerified: { type: Boolean, default: false },
   createdAt: { type: Date, default: Date.now }
 });

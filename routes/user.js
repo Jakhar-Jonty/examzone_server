@@ -3,6 +3,7 @@ import { authenticate } from '../middleware/auth.js';
 import {
   getProfile,
   updateProfile,
+  uploadProfileImage,
   getExamHistory,
   getDashboardStats,
   getAllExams,
@@ -14,6 +15,7 @@ import {
   updateSavedQuestion,
   checkSavedQuestions
 } from '../controllers/userController.js';
+import { upload } from '../config/cloudinary.js';
 import {
   getCurrentWordOfDay,
   getCurrentMotivationalQuote
@@ -23,6 +25,7 @@ const router = express.Router();
 
 router.get('/profile', authenticate, getProfile);
 router.put('/profile', authenticate, updateProfile);
+router.post('/profile/upload-image', authenticate, upload.single('file'), uploadProfileImage);
 router.get('/exam-history', authenticate, getExamHistory);
 router.get('/dashboard-stats', authenticate, getDashboardStats);
 router.get('/exams', authenticate, getAllExams);

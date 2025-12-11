@@ -6,6 +6,7 @@ import Question from '../models/Question.js';
 import SubjectTopic from '../models/SubjectTopic.js';
 import SavedQuestion from '../models/SavedQuestion.js';
 import Category from '../models/Category.js';
+import cloudinary from '../config/cloudinary.js';
 
 export const getProfile = async (req, res) => {
   try {
@@ -18,17 +19,47 @@ export const getProfile = async (req, res) => {
 
 export const updateProfile = async (req, res) => {
   try {
-    const { name, email, examPreparations, preferredLanguage } = req.body;
+    const { name, email, examPreparations, preferredLanguage, profileImage } = req.body;
     const user = await User.findById(req.user._id);
 
     if (name) user.name = name;
     if (email) user.email = email;
     if (examPreparations) user.examPreparations = examPreparations;
     if (preferredLanguage) user.preferredLanguage = preferredLanguage;
+    if (profileImage) user.profileImage = profileImage;
 
     await user.save();
 
     res.json({ message: 'Profile updated successfully', user });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// Upload profile image
+export const uploadProfileImage = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ message: 'No file uploaded' });
+    }
+
+    // Delete old profile image if exists
+    const user = await User.findById(req.user._id);
+    if (user.profileImage) {
+      try {
+        const publicId = user.profileImage.split('/').slice(-2).join('/').split('.')[0];
+        await cloudinary.uploader.destroy(publicId);
+      } catch (deleteError) {
+        console.error('Error deleting old profile image:', deleteError);
+        // Continue even if deletion fails
+      }
+    }
+
+    res.json({
+      message: 'Profile image uploaded successfully',
+      url: req.file.path,
+      publicId: req.file.filename
+    });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -866,21 +897,42 @@ export const getSubjectsAndTopics = async (req, res) => {
     const query = {};
     
     if (category) {
-      query.category = category;
+      // Handle both ObjectId and string category
+      const mongoose = (await import('mongoose')).default;
+      if (mongoose.Types.ObjectId.isValid(category)) {
+        query.category = category;
+      } else {
+        // If it's a string (category code), find the category first
+        const categoryDoc = await Category.findOne({ 
+          code: category.toUpperCase(),
+          isActive: true 
+        });
+        if (categoryDoc) {
+          query.category = categoryDoc._id;
+        } else {
+          // Category not found, return empty result
+          return res.json({ subjectsAndTopics: [] });
+        }
+      }
     }
 
     const subjectTopics = await SubjectTopic.find(query)
+      .populate('category', 'name code')
       .sort({ usageCount: -1, lastUsed: -1 })
       .limit(1000);
 
     // Group by subject
     const grouped = {};
     subjectTopics.forEach(st => {
+      const categoryId = st.category?._id?.toString() || st.category?.toString() || '';
+      const categoryName = st.category?.name || st.category?.code || categoryId;
+      
       if (!grouped[st.subject]) {
         grouped[st.subject] = {
           subject: st.subject,
           topics: [],
-          category: st.category
+          category: categoryId,
+          categoryName: categoryName
         };
       }
       if (st.topic && !grouped[st.subject].topics.includes(st.topic)) {
@@ -896,6 +948,7 @@ export const getSubjectsAndTopics = async (req, res) => {
 
     res.json({ subjectsAndTopics: result });
   } catch (error) {
+    console.error('Error fetching subjects and topics:', error);
     res.status(500).json({ message: error.message });
   }
 };
