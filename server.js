@@ -31,6 +31,18 @@ app.use(cors({ origin: '*', credentials: true }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// Ensure DB is connected before handling API requests on serverless.
+app.use(async (req, res, next) => {
+  if (req.path === '/api/health' || req.path === '/health') return next();
+  try {
+    await connectDB();
+    return next();
+  } catch (error) {
+    console.error('DB middleware failed:', error.message);
+    return res.status(500).json({ message: 'Database connection failed' });
+  }
+});
+
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/user', userRoutes);

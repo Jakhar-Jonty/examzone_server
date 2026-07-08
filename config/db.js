@@ -1,6 +1,16 @@
 import mongoose from 'mongoose';
 
+let cachedConnection = null;
+let connectingPromise = null;
+
 const connectDB = async () => {
+  if (cachedConnection && mongoose.connection.readyState === 1) {
+    return cachedConnection;
+  }
+  if (connectingPromise) {
+    return connectingPromise;
+  }
+
   const isProd = process.env.NODE_ENV === 'production';
   const mongoUri = process.env.MONGODB_URI;
 
@@ -9,17 +19,25 @@ const connectDB = async () => {
     throw new Error('MONGODB_URI is missing in production environment');
   }
 
-  try {
-    const conn = await mongoose.connect(mongoUri || 'mongodb://localhost:27017/goprep');
-    console.log(`MongoDB Connected: ${conn.connection.host}`);
-  } catch (error) {
-    console.error(`MongoDB connection failed: ${error.message}`);
-    if (error.message.includes('bad auth')) {
-      console.error('Hint: Atlas username/password may be wrong. For local dev use MONGODB_URI=mongodb://localhost:27017/goprep');
-    }
-    // Throw instead of exiting the process so hosting platforms can surface logs.
-    throw error;
-  }
+  connectingPromise = mongoose
+    .connect(mongoUri || 'mongodb://localhost:27017/goprep')
+    .then((conn) => {
+      cachedConnection = conn;
+      console.log(`MongoDB Connected: ${conn.connection.host}`);
+      return conn;
+    })
+    .catch((error) => {
+      console.error(`MongoDB connection failed: ${error.message}`);
+      if (error.message.includes('bad auth')) {
+        console.error('Hint: Atlas username/password may be wrong. For local dev use MONGODB_URI=mongodb://localhost:27017/goprep');
+      }
+      throw error;
+    })
+    .finally(() => {
+      connectingPromise = null;
+    });
+
+  return connectingPromise;
 };
 
 export default connectDB;
