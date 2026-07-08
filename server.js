@@ -24,6 +24,7 @@ dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 8000;
+const isServerless = !!process.env.VERCEL;
 
 // Middleware
 app.use(cors({ origin: '*', credentials: true }));
@@ -73,34 +74,42 @@ app.use((err, req, res, next) => {
   });
 });
 
-
-const httpServer = http.createServer(app);
-
-const io = new Server(httpServer, {
-  cors: { origin: '*', methods: ['GET', 'POST'] },
-});
-
-setIo(io);
-
-io.on('connection', (socket) => {
-  console.log('Socket connected:', socket.id);
-  socket.on('disconnect', () => {
-    console.log('Socket disconnected:', socket.id);
+if (isServerless) {
+  // Vercel serverless runtime: don't call listen()/process.exit().
+  // Keep this non-blocking so /api/health can still return even if DB is down.
+  connectDB().catch((error) => {
+    console.error('DB connection failed (serverless):', error.message);
   });
-});
+} else {
+  const httpServer = http.createServer(app);
 
-const startServer = async () => {
-  try {
-    // Ensure DB is connected before serving API requests.
-    await connectDB();
-    httpServer.listen(PORT, () => {
-      console.log(`Server running on port ${PORT}`);
+  const io = new Server(httpServer, {
+    cors: { origin: '*', methods: ['GET', 'POST'] },
+  });
+
+  setIo(io);
+
+  io.on('connection', (socket) => {
+    console.log('Socket connected:', socket.id);
+    socket.on('disconnect', () => {
+      console.log('Socket disconnected:', socket.id);
     });
-  } catch (error) {
-    console.error('Server startup failed:', error.message);
-    process.exit(1);
-  }
-};
+  });
 
-startServer();
+  const startServer = async () => {
+    try {
+      await connectDB();
+      httpServer.listen(PORT, () => {
+        console.log(`Server running on port ${PORT}`);
+      });
+    } catch (error) {
+      console.error('Server startup failed:', error.message);
+      process.exit(1);
+    }
+  };
+
+  startServer();
+}
+
+export default app;
 
