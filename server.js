@@ -51,7 +51,20 @@ app.use('/api/practice-sessions', practiceSessionRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'OK', message: 'GopPrep API is running' });
+  res.json({
+    status: 'OK',
+    message: 'GopPrep API is running',
+    timestamp: new Date().toISOString(),
+  });
+});
+
+// Platform/liveness health route
+app.get('/health', (req, res) => {
+  res.json({
+    status: 'OK',
+    message: 'GopPrep API is running',
+    timestamp: new Date().toISOString(),
+  });
 });
 
 // Error handling middleware
