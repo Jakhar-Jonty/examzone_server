@@ -1,17 +1,19 @@
 import User from '../models/User.js';
 
-// Badge definitions
+// Badge definitions.
+// icon = emoji, color = hex, threshold = streak days — matching the web
+// Achievements page so both clients render the same visuals.
 export const BADGES = {
-  FIRST_DAY: { id: 'first_day', name: 'Getting Started', description: 'Complete your first day of study' },
-  THREE_DAY: { id: 'three_day', name: 'On Fire', description: 'Maintain a 3-day streak' },
-  SEVEN_DAY: { id: 'seven_day', name: 'Week Warrior', description: 'Maintain a 7-day streak' },
-  FOURTEEN_DAY: { id: 'fourteen_day', name: 'Dedicated', description: 'Maintain a 14-day streak' },
-  THIRTY_DAY: { id: 'thirty_day', name: 'Consistent', description: 'Maintain a 30-day streak' },
-  SIXTY_DAY: { id: 'sixty_day', name: 'Unstoppable', description: 'Maintain a 60-day streak' },
-  HUNDRED_DAY: { id: 'hundred_day', name: 'Centurion', description: 'Maintain a 100-day streak' },
-  TWO_HUNDRED_DAY: { id: 'two_hundred_day', name: 'Legend', description: 'Maintain a 200-day streak' },
-  THREE_HUNDRED_DAY: { id: 'three_hundred_day', name: 'Master', description: 'Maintain a 300-day streak' },
-  THREE_SIXTY_FIVE_DAY: { id: 'three_sixty_five_day', name: 'Year Champion', description: 'Maintain a 365-day streak' }
+  FIRST_DAY: { id: 'first_day', name: 'Getting Started', description: 'Complete your first day of study', icon: '🎯', color: '#16a34a', threshold: 1 },
+  THREE_DAY: { id: 'three_day', name: 'On Fire', description: 'Maintain a 3-day streak', icon: '🔥', color: '#f97316', threshold: 3 },
+  SEVEN_DAY: { id: 'seven_day', name: 'Week Warrior', description: 'Maintain a 7-day streak', icon: '⚔️', color: '#8b5cf6', threshold: 7 },
+  FOURTEEN_DAY: { id: 'fourteen_day', name: 'Dedicated', description: 'Maintain a 14-day streak', icon: '💪', color: '#16a34a', threshold: 14 },
+  THIRTY_DAY: { id: 'thirty_day', name: 'Consistent', description: 'Maintain a 30-day streak', icon: '⭐', color: '#eab308', threshold: 30 },
+  SIXTY_DAY: { id: 'sixty_day', name: 'Unstoppable', description: 'Maintain a 60-day streak', icon: '🚀', color: '#16a34a', threshold: 60 },
+  HUNDRED_DAY: { id: 'hundred_day', name: 'Centurion', description: 'Maintain a 100-day streak', icon: '👑', color: '#f59e0b', threshold: 100 },
+  TWO_HUNDRED_DAY: { id: 'two_hundred_day', name: 'Legend', description: 'Maintain a 200-day streak', icon: '🏆', color: '#ef4444', threshold: 200 },
+  THREE_HUNDRED_DAY: { id: 'three_hundred_day', name: 'Master', description: 'Maintain a 300-day streak', icon: '🎖️', color: '#ec4899', threshold: 300 },
+  THREE_SIXTY_FIVE_DAY: { id: 'three_sixty_five_day', name: 'Year Champion', description: 'Maintain a 365-day streak', icon: '🌟', color: '#f59e0b', threshold: 365 }
 };
 
 // Helper function to check if two dates are on the same day (in user's timezone)

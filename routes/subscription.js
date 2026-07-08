@@ -1,28 +1,21 @@
 import express from 'express';
+import crypto from 'crypto';
+import Razorpay from 'razorpay';
 import { authenticate } from '../middleware/auth.js';
 import User from '../models/User.js';
 import Subscription from '../models/Subscription.js';
 
-// Initialize Razorpay only if credentials are available
 let razorpay = null;
 
-// Try to load and initialize Razorpay
-(async () => {
-  try {
-    if (process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET) {
-      const Razorpay = (await import('razorpay')).default;
-      razorpay = new Razorpay({
-        key_id: process.env.RAZORPAY_KEY_ID,
-        key_secret: process.env.RAZORPAY_KEY_SECRET,
-      });
-      console.log('Razorpay initialized successfully');
-    } else {
-      console.log('Razorpay credentials not found, using mock payment mode');
-    }
-  } catch (error) {
-    console.log('Razorpay module not available, using mock payment mode');
-  }
-})();
+if (process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET) {
+  razorpay = new Razorpay({
+    key_id: process.env.RAZORPAY_KEY_ID,
+    key_secret: process.env.RAZORPAY_KEY_SECRET,
+  });
+  console.log('Razorpay initialized successfully');
+} else {
+  console.log('Razorpay credentials not found, using mock payment mode');
+}
 
 // Get pricing plans
 export const getPlans = async (req, res) => {
@@ -90,6 +83,10 @@ export const createOrder = async (req, res) => {
     const amount = plan === 'monthly' ? 29900 : 299900; // Amount in paise
     const currency = 'INR';
 
+    if (amount < 100) {
+      return res.status(400).json({ message: 'Minimum amount is 100 paise' });
+    }
+
     // If Razorpay is not configured, use mock order
     if (!razorpay) {
       const mockOrderId = `order_mock_${user._id}_${Date.now()}`;
@@ -104,7 +101,7 @@ export const createOrder = async (req, res) => {
     const options = {
       amount,
       currency,
-      receipt: `order_${user._id}_${Date.now()}`,
+      receipt: `rcpt_${Date.now()}`,
       notes: {
         userId: user._id.toString(),
         plan
@@ -115,12 +112,17 @@ export const createOrder = async (req, res) => {
 
     res.json({
       orderId: order.id,
+      order_id: order.id,
       amount: order.amount,
       currency: order.currency,
       isMock: false
     });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    if (error.statusCode === 401) {
+      return res.status(401).json({ message: 'Razorpay authentication failed' });
+    }
+    console.error('Razorpay create order error:', error);
+    res.status(500).json({ message: error.error?.description || error.message || 'Failed to create order' });
   }
 };
 
@@ -154,7 +156,6 @@ export const verifyPayment = async (req, res) => {
         return res.status(500).json({ message: 'Payment verification not configured' });
       }
 
-      const crypto = await import('crypto');
       const text = `${orderId}|${paymentId}`;
       const generatedSignature = crypto
         .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET)

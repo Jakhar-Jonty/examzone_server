@@ -5,7 +5,8 @@ import {
   loginController,
   registerController,
   setPasswordController,
-  getMeController
+  getMeController,
+  googleAuthController,
 } from '../controllers/authController.js';
 import { authenticate } from '../middleware/auth.js';
 
@@ -17,6 +18,7 @@ router.post('/verify-otp', verifyOTPController);
 router.post('/login', loginController);
 router.post('/set-password', authenticate, setPasswordController);
 router.get('/me', authenticate, getMeController);
+router.post('/google', googleAuthController);
 
 export default router;
 

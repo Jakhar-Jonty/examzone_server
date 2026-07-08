@@ -1,7 +1,10 @@
+import http from 'http';
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import { Server } from 'socket.io';
 import connectDB from './config/db.js';
+import { setIo } from './utils/socket.js';
 import authRoutes from './routes/auth.js';
 import userRoutes from './routes/user.js';
 import examRoutes from './routes/exam.js';
@@ -10,14 +13,20 @@ import articleRoutes from './routes/article.js';
 import subscriptionRoutes from './routes/subscription.js';
 import categoryRoutes from './routes/category.js';
 import subjectRoutes from './routes/subject.js';
+import gamificationRoutes from './routes/gamification.js';
+import notificationRoutes from './routes/notification.js';
+import testSeriesRoutes from './routes/testSeries.js';
+import reviewRoutes from './routes/review.js';
+import studyPlanRoutes from './routes/studyPlan.js';
+import practiceSessionRoutes from './routes/practiceSession.js';
 
 dotenv.config();
 
 const app = express();
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 8000;
 
 // Middleware
-app.use(cors());
+app.use(cors({ origin: '*', credentials: true }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -33,6 +42,12 @@ app.use('/api/articles', articleRoutes);
 app.use('/api/subscription', subscriptionRoutes);
 app.use('/api/categories', categoryRoutes);
 app.use('/api/subjects', subjectRoutes);
+app.use('/api/gamification', gamificationRoutes);
+app.use('/api/notifications', notificationRoutes);
+app.use('/api/test-series', testSeriesRoutes);
+app.use('/api/reviews', reviewRoutes);
+app.use('/api/study-plans', studyPlanRoutes);
+app.use('/api/practice-sessions', practiceSessionRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {
@@ -49,7 +64,22 @@ app.use((err, req, res, next) => {
 });
 
 
-app.listen(PORT, () => {
+const httpServer = http.createServer(app);
+
+const io = new Server(httpServer, {
+  cors: { origin: '*', methods: ['GET', 'POST'] },
+});
+
+setIo(io);
+
+io.on('connection', (socket) => {
+  console.log('Socket connected:', socket.id);
+  socket.on('disconnect', () => {
+    console.log('Socket disconnected:', socket.id);
+  });
+});
+
+httpServer.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
 

@@ -3,17 +3,22 @@ import ExamAttempt from '../models/ExamAttempt.js';
 import Question from '../models/Question.js';
 import User from '../models/User.js';
 
+const EXAM_QUESTION_FIELDS =
+  'questionText questionTextHindi options optionsHindi translations correctAnswer explanation explanationHindi marks questionImage language difficulty category subject topic assertion reason';
+const EXAM_QUESTION_FIELDS_BASIC =
+  'questionText questionTextHindi options optionsHindi translations correctAnswer explanation explanationHindi marks questionImage language';
+
 // Helper to check and reset weekly limit
 const checkWeeklyLimit = async (user) => {
   const now = new Date();
   const daysSinceReset = Math.floor((now - user.lastWeekReset) / (1000 * 60 * 60 * 24));
-  
+
   if (daysSinceReset >= 7) {
     user.weeklyExamsAttempted = 0;
     user.lastWeekReset = now;
     await user.save();
   }
-  
+
   return user;
 };
 
@@ -21,33 +26,16 @@ export const getAvailableExams = async (req, res) => {
   try {
     const user = await User.findById(req.user._id);
     const now = new Date();
-    
-    // Handle both old string categories and new ObjectId categories
-    const Category = (await import('../models/Category.js')).default;
-    const categoryIds = [];
-    
-    if (user.examPreparations && user.examPreparations.length > 0) {
-      // Check if examPreparations contains ObjectIds or strings
-      const firstPrep = user.examPreparations[0];
-      if (typeof firstPrep === 'string') {
-        // Old format: strings like "SSC", "Banking", "HSSC"
-        // Find categories by code
-        const categories = await Category.find({ 
-          code: { $in: user.examPreparations.map(p => p.toUpperCase()) },
-          isActive: true 
-        });
-        categoryIds.push(...categories.map(c => c._id));
-      } else {
-        // New format: already ObjectIds
-        categoryIds.push(...user.examPreparations);
-      }
-    }
-    
+
+    // Use utility helper to get category IDs from examPreparations
+    const { getCategoryIdsFromExamPreparations } = await import('../utils/examPrepHelper.js');
+    const categoryIds = await getCategoryIdsFromExamPreparations(user.examPreparations);
+
     // Build query - handle both old and new category formats
-    const categoryQuery = categoryIds.length > 0 
+    const categoryQuery = categoryIds.length > 0
       ? { category: { $in: categoryIds } }
       : {}; // If no categories found, return empty
-    
+
     // Get available exams - exams that have started and not expired
     // Account for IST timezone (UTC+5:30) - MongoDB stores in UTC
     const exams = await Exam.find({
@@ -68,15 +56,15 @@ export const getAvailableExams = async (req, res) => {
         }
       ]
     })
-    .select('-questions') // Don't populate questions - only need count
-    .sort({ scheduledTime: -1 });
-    
+      .select('-questions') // Don't populate questions - only need count
+      .sort({ scheduledTime: -1 });
+
     // Get question counts separately
     const examIds = exams.map(exam => exam._id);
     const examQuestionCounts = await Exam.find({ _id: { $in: examIds } })
       .select('_id questions')
       .lean();
-    
+
     const questionCountMap = {};
     examQuestionCounts.forEach(exam => {
       questionCountMap[exam._id.toString()] = exam.questions?.length || 0;
@@ -90,7 +78,7 @@ export const getAvailableExams = async (req, res) => {
           exam: exam._id,
           isCompleted: true
         });
-        
+
         return {
           ...exam.toObject(),
           questions: questionCountMap[exam._id.toString()] || 0, // Just the count
@@ -110,7 +98,7 @@ export const getExamDetails = async (req, res) => {
   try {
     // Only populate questions if explicitly requested (for when exam is started)
     const includeQuestions = req.query.includeQuestions === 'true';
-    
+
     let exam;
     if (includeQuestions) {
       exam = await Exam.findOne({
@@ -122,7 +110,7 @@ export const getExamDetails = async (req, res) => {
       })
         .populate({
           path: 'questions',
-          select: 'questionText questionTextHindi options optionsHindi marks questionImage language difficulty category subject topic'
+          select: EXAM_QUESTION_FIELDS
         });
     } else {
       // Don't populate questions - just get exam metadata
@@ -134,17 +122,21 @@ export const getExamDetails = async (req, res) => {
         ]
       })
         .select('-questions'); // Exclude questions array
-      
+
+      if (!exam) {
+        return res.status(404).json({ message: 'Exam not found or has been deleted' });
+      }
+
       // Get question count in a single additional query
       const examWithCount = await Exam.findById(req.params.id)
         .select('questions')
         .lean();
-      
+
       // Convert to object and add question count
       exam = exam.toObject();
       exam.questions = examWithCount?.questions?.length || 0; // Just the count
     }
-    
+
     if (!exam) {
       return res.status(404).json({ message: 'Exam not found' });
     }
@@ -155,18 +147,18 @@ export const getExamDetails = async (req, res) => {
       exam: req.params.id,
       isCompleted: true
     })
-    .select('_id totalScore percentage attemptNumber endTime createdAt')
-    .sort({ attemptNumber: -1 })
-    .lean();
+      .select('_id totalScore percentage attemptNumber endTime createdAt')
+      .sort({ attemptNumber: -1 })
+      .lean();
 
     // Get latest attempt
     const latestAttempt = completedAttempts.length > 0 ? completedAttempts[0] : null;
-    
+
     // Calculate best score
     let bestScore = null;
     let bestAttemptId = null;
     if (completedAttempts.length > 0) {
-      const bestAttempt = completedAttempts.reduce((best, current) => 
+      const bestAttempt = completedAttempts.reduce((best, current) =>
         current.totalScore > best.totalScore ? current : best
       );
       bestScore = bestAttempt.totalScore;
@@ -188,7 +180,7 @@ export const getExamDetails = async (req, res) => {
     const maxAttempts = exam.maxAttempts || 3;
     const canReattempt = allowReattempts && attemptCount < maxAttempts;
 
-    res.json({ 
+    res.json({
       exam,
       attemptStatus: {
         isCompleted: attemptCount > 0,
@@ -230,10 +222,10 @@ export const startExam = async (req, res) => {
     })
       .populate({
         path: 'questions',
-        select: 'questionText questionTextHindi options optionsHindi correctAnswer explanation explanationHindi marks questionImage language difficulty category subject topic'
+        select: EXAM_QUESTION_FIELDS
       })
       .select('+sections +timePerQuestion +randomizeQuestions');
-    
+
     if (!exam) {
       return res.status(404).json({ message: 'Exam not found or has been deleted' });
     }
@@ -246,18 +238,18 @@ export const startExam = async (req, res) => {
     }).select('_id attemptNumber');
 
     const attemptCount = completedAttempts.length;
-    
+
     // Check if re-attempts are allowed
     if (attemptCount > 0) {
       if (!exam.allowReattempts) {
-        return res.status(400).json({ 
-          message: 'Re-attempts are not allowed for this exam' 
+        return res.status(400).json({
+          message: 'Re-attempts are not allowed for this exam'
         });
       }
-      
+
       if (attemptCount >= exam.maxAttempts) {
-        return res.status(400).json({ 
-          message: `Maximum attempts (${exam.maxAttempts}) reached for this exam` 
+        return res.status(400).json({
+          message: `Maximum attempts (${exam.maxAttempts}) reached for this exam`
         });
       }
     }
@@ -265,11 +257,11 @@ export const startExam = async (req, res) => {
     // Check subscription and weekly limit
     await checkWeeklyLimit(user);
     const updatedUser = await User.findById(user._id);
-    
+
     if (updatedUser.subscriptionStatus === 'free') {
       if (updatedUser.weeklyExamsAttempted >= 3) {
-        return res.status(403).json({ 
-          message: 'Weekly limit reached. Upgrade to premium for unlimited exams.' 
+        return res.status(403).json({
+          message: 'Weekly limit reached. Upgrade to premium for unlimited exams.'
         });
       }
     }
@@ -290,15 +282,15 @@ export const startExam = async (req, res) => {
       exam: exam._id,
       isCompleted: false
     })
-    .populate({
-      path: 'answers.question',
-      select: 'questionText questionTextHindi options optionsHindi correctAnswer explanation explanationHindi marks questionImage language'
-    });
+      .populate({
+        path: 'answers.question',
+        select: EXAM_QUESTION_FIELDS_BASIC
+      });
 
     if (!attempt) {
       // Calculate next attempt number
       const nextAttemptNumber = attemptCount + 1;
-      
+
       // Randomize questions if enabled
       let questionsToUse = [...exam.questions];
       if (exam.randomizeQuestions) {
@@ -310,7 +302,7 @@ export const startExam = async (req, res) => {
             const qId = q._id ? q._id.toString() : q.toString();
             questionMap.set(qId, q);
           });
-          
+
           // Randomize questions within each section
           const randomizedQuestions = [];
           exam.sections.forEach(section => {
@@ -322,13 +314,13 @@ export const startExam = async (req, res) => {
                   return questionMap.get(sqIdStr);
                 })
                 .filter(q => q !== undefined);
-              
+
               // Shuffle questions within this section
               const shuffledSectionQuestions = sectionQuestions.sort(() => Math.random() - 0.5);
               randomizedQuestions.push(...shuffledSectionQuestions);
             }
           });
-          
+
           // Add any questions not in any section (shouldn't happen, but just in case)
           const sectionQuestionIds = new Set();
           exam.sections.forEach(section => {
@@ -338,32 +330,42 @@ export const startExam = async (req, res) => {
               });
             }
           });
-          
+
           const unassignedQuestions = exam.questions.filter(q => {
             const qId = q._id ? q._id.toString() : q.toString();
             return !sectionQuestionIds.has(qId);
           });
-          
+
           if (unassignedQuestions.length > 0) {
             // Shuffle unassigned questions and add them at the end
             const shuffledUnassigned = unassignedQuestions.sort(() => Math.random() - 0.5);
             randomizedQuestions.push(...shuffledUnassigned);
           }
-          
+
           questionsToUse = randomizedQuestions;
         } else {
           // No sections - shuffle all questions together
           questionsToUse = questionsToUse.sort(() => Math.random() - 0.5);
         }
       }
-      
-      // Initialize answers array
+
+      // Initialize answers array using new schema fields
       const answers = questionsToUse.map(question => ({
-        question: question,
+        question: question._id || question,
         selectedAnswer: null,
         isCorrect: false,
-        marksObtained: 0,
-        timeSpent: 0
+        marksAwarded: 0,
+        marksDeducted: 0,
+        netMarks: 0,
+        timeSpent: 0,
+        isMarkedForReview: false,
+        isSkipped: false,
+        answerChangedCount: 0,
+        viewCount: 1,
+        difficulty: question.difficulty || null,
+        subject: question.subject || null,
+        topic: question.topic || null,
+        questionType: question.questionType || null
       }));
 
       attempt = new ExamAttempt({
@@ -371,21 +373,26 @@ export const startExam = async (req, res) => {
         exam: exam._id,
         answers,
         startTime: new Date(),
-        attemptNumber: nextAttemptNumber
+        attemptNumber: nextAttemptNumber,
+        attemptType: 'full',
+        totalQuestions: questionsToUse.length,
+        maxScore: exam.totalMarks || questionsToUse.length // fallback: 1 mark per question
       });
       await attempt.save();
 
-      // Increment weekly count only for new attempts
-      updatedUser.weeklyExamsAttempted += 1;
-      await updatedUser.save();
-      
+      // Increment weekly count only for new attempts (use updateOne to avoid triggering pre-save hooks)
+      await User.updateOne(
+        { _id: updatedUser._id },
+        { $inc: { weeklyExamsAttempted: 1 } }
+      );
+
       // Populate questions after save
       attempt = await ExamAttempt.findById(attempt._id)
         .populate({
           path: 'answers.question',
-          select: 'questionText questionTextHindi options optionsHindi correctAnswer explanation explanationHindi marks questionImage language difficulty category subject topic'
+          select: EXAM_QUESTION_FIELDS
         });
-      
+
       // Update question usage statistics
       questionsToUse.forEach(question => {
         Question.findByIdAndUpdate(question._id, {
@@ -408,7 +415,7 @@ export const startExam = async (req, res) => {
 
     // Return exam with populated questions and sections/timePerQuestion so frontend doesn't need to call getExamDetails again
     const examData = exam.toObject();
-    res.json({ 
+    res.json({
       attempt,
       exam: {
         ...examData,
@@ -417,7 +424,7 @@ export const startExam = async (req, res) => {
         randomizeQuestions: exam.randomizeQuestions || false
       },
       exam, // Include exam with populated questions
-      isResumed: attempt.isPaused === false && attempt.lastResumedAt 
+      isResumed: attempt.isPaused === false && attempt.lastResumedAt
     });
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -428,7 +435,7 @@ export const saveAnswers = async (req, res) => {
   try {
     const { answers } = req.body;
     const attempt = await ExamAttempt.findById(req.params.attemptId);
-    
+
     if (!attempt) {
       return res.status(404).json({ message: 'Attempt not found' });
     }
@@ -460,9 +467,9 @@ export const submitExam = async (req, res) => {
       .populate('exam')
       .populate({
         path: 'answers.question',
-        select: 'questionText questionTextHindi options optionsHindi correctAnswer explanation explanationHindi marks questionImage language'
+        select: EXAM_QUESTION_FIELDS_BASIC
       });
-    
+
     if (!attempt) {
       return res.status(404).json({ message: 'Attempt not found' });
     }
@@ -487,14 +494,18 @@ export const submitExam = async (req, res) => {
         question: ans.question,
         selectedAnswer: ans.selectedAnswer || null,
         isCorrect: ans.isCorrect || false,
-        marksObtained: ans.marksObtained || 0,
-        timeSpent: typeof ans.timeSpent === 'number' ? ans.timeSpent : (parseFloat(ans.timeSpent) || 0)
+        marksAwarded: ans.marksAwarded || ans.marksObtained || 0,
+        marksDeducted: ans.marksDeducted || 0,
+        netMarks: ans.netMarks || ans.marksObtained || 0,
+        timeSpent: typeof ans.timeSpent === 'number' ? ans.timeSpent : (parseFloat(ans.timeSpent) || 0),
+        isMarkedForReview: ans.isMarkedForReview || false,
+        isSkipped: ans.isSkipped || false
       }));
       await attempt.save();
       // Re-populate after saving
       await attempt.populate({
         path: 'answers.question',
-        select: 'questionText questionTextHindi options optionsHindi correctAnswer explanation explanationHindi marks questionImage language'
+        select: EXAM_QUESTION_FIELDS_BASIC
       });
     }
 
@@ -526,20 +537,20 @@ export const submitExam = async (req, res) => {
         }
       }
     }
-    
+
     // Calculate marks per question from exam (priority: use exam's marks per question)
     // This is calculated as totalMarks / number of questions
     const examMarksPerQuestion = attempt.exam.totalMarks && attempt.exam.questions && attempt.exam.questions.length > 0
       ? attempt.exam.totalMarks / attempt.exam.questions.length
       : null;
-    
+
     attempt.answers.forEach(answer => {
       const question = answer.question;
       const questionId = question._id.toString();
-      
+
       // Look up marks - all keys are normalized to strings
       let questionMarks = examQuestionMarks[questionId];
-      
+
       // If not found, try to find by comparing all keys (in case of ObjectId mismatch)
       if (questionMarks === undefined) {
         for (const key in examQuestionMarks) {
@@ -550,12 +561,12 @@ export const submitExam = async (req, res) => {
           }
         }
       }
-      
+
       // Convert to number if it's a string
       if (questionMarks !== undefined) {
         questionMarks = parseFloat(questionMarks);
       }
-      
+
       // Priority order for marks:
       // 1. exam.questionMarks[questionId] (explicit per-question marks)
       // 2. exam.totalMarks / exam.questions.length (marks per question for the exam) - THIS IS THE PRIORITY
@@ -570,23 +581,32 @@ export const submitExam = async (req, res) => {
           questionMarks = question.marks || 1;
         }
       }
-      
+
       if (!answer.selectedAnswer) {
         unattempted++;
-        answer.marksObtained = 0;
+        answer.marksAwarded = 0;
+        answer.marksDeducted = 0;
+        answer.netMarks = 0;
       } else if (answer.selectedAnswer === question.correctAnswer) {
         answer.isCorrect = true;
-        answer.marksObtained = questionMarks;
-        totalScore += answer.marksObtained;
+        answer.marksAwarded = questionMarks;
+        answer.marksDeducted = 0;
+        answer.netMarks = questionMarks;
+        totalScore += questionMarks;
         correctAnswers++;
       } else {
         answer.isCorrect = false;
         // Apply negative marking if enabled
         if (attempt.exam.enableNegativeMarking && attempt.exam.negativeMarksPerQuestion) {
-          answer.marksObtained = -Math.abs(parseFloat(attempt.exam.negativeMarksPerQuestion));
-          totalScore += answer.marksObtained;
+          const deduction = Math.abs(parseFloat(attempt.exam.negativeMarksPerQuestion));
+          answer.marksAwarded = 0;
+          answer.marksDeducted = deduction;
+          answer.netMarks = -deduction;
+          totalScore -= deduction;
         } else {
-          answer.marksObtained = 0;
+          answer.marksAwarded = 0;
+          answer.marksDeducted = 0;
+          answer.netMarks = 0;
         }
         incorrectAnswers++;
       }
@@ -594,8 +614,8 @@ export const submitExam = async (req, res) => {
 
     const endTime = new Date();
     const timeTaken = Math.floor((endTime - attempt.startTime) / 1000);
-    const percentage = attempt.exam.totalMarks > 0 
-      ? (totalScore / attempt.exam.totalMarks) * 100 
+    const percentage = attempt.exam.totalMarks > 0
+      ? (totalScore / attempt.exam.totalMarks) * 100
       : 0;
 
     attempt.endTime = endTime;
@@ -606,14 +626,18 @@ export const submitExam = async (req, res) => {
     attempt.unattempted = unattempted;
     attempt.percentage = percentage;
     attempt.isCompleted = true;
-    
+
     await attempt.save();
 
     // Update study streak
     const { updateStudyStreak } = await import('../utils/streakManager.js');
     const streakUpdate = await updateStudyStreak(attempt.user);
 
-    res.json({ 
+    // Award XP, rank, and performance badges
+    const { awardForAttempt } = await import('../utils/awardEngine.js');
+    const rewards = await awardForAttempt(attempt.user, { correctAnswers, percentage });
+
+    res.json({
       message: 'Exam submitted successfully',
       result: {
         attemptId: attempt._id,
@@ -625,7 +649,8 @@ export const submitExam = async (req, res) => {
         unattempted,
         timeTaken
       },
-      streak: streakUpdate
+      streak: streakUpdate,
+      rewards
     });
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -635,7 +660,7 @@ export const submitExam = async (req, res) => {
 export const pauseExam = async (req, res) => {
   try {
     const attempt = await ExamAttempt.findById(req.params.attemptId);
-    
+
     if (!attempt) {
       return res.status(404).json({ message: 'Attempt not found' });
     }
@@ -661,9 +686,9 @@ export const pauseExam = async (req, res) => {
     attempt.pausedAt = new Date();
     await attempt.save();
 
-    res.json({ 
+    res.json({
       message: 'Exam paused successfully',
-      attempt 
+      attempt
     });
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -675,14 +700,15 @@ export const getResult = async (req, res) => {
     const attempt = await ExamAttempt.findById(req.params.attemptId)
       .populate({
         path: 'exam',
-        populate: {
-          path: 'sections.questions',
-          select: '_id'
-        }
+        select: 'title duration totalMarks category subCategory language isPremium accessType averageRating reviewCount',
+        populate: [
+          { path: 'category', select: 'name' },
+          { path: 'subCategory', select: 'name' },
+        ],
       })
       .populate({
         path: 'answers.question',
-        select: 'questionText questionTextHindi options optionsHindi correctAnswer explanation explanationHindi marks questionImage language'
+        select: EXAM_QUESTION_FIELDS_BASIC
       });
 
     if (!attempt) {
@@ -704,9 +730,56 @@ export const getResult = async (req, res) => {
       .sort({ attemptNumber: -1 })
       .lean();
 
-    res.json({ 
+    res.json({
       result: attempt,
       previousAttempts: previousAttempts || []
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// GET /api/exams/active-attempt
+// Most recent in-progress (not completed) attempt, for the Home "Resume" card.
+export const getActiveAttempt = async (req, res) => {
+  try {
+    // Scan recent incomplete attempts and return the first whose exam still
+    // exists and isn't deleted — otherwise the Home "Resume" card would offer
+    // an exam that can't be started.
+    const candidates = await ExamAttempt.find({
+      user: req.user._id,
+      isCompleted: false,
+    })
+      .sort({ updatedAt: -1 })
+      .limit(10)
+      .populate({
+        path: 'exam',
+        select: 'title duration totalMarks deleted',
+      })
+      .lean();
+
+    const valid = candidates.find((c) => c.exam && c.exam.deleted !== true);
+    if (!valid) {
+      return res.json({ attempt: null });
+    }
+    const attempt = valid;
+
+    const answeredCount = (attempt.answers || []).filter(
+      (a) => a.selectedAnswer !== undefined && a.selectedAnswer !== null && a.selectedAnswer !== ''
+    ).length;
+
+    res.json({
+      attempt: {
+        attemptId: attempt._id,
+        examId: attempt.exam._id,
+        examTitle: attempt.exam.title,
+        duration: attempt.exam.duration,
+        totalMarks: attempt.exam.totalMarks,
+        isPaused: attempt.isPaused,
+        answeredCount,
+        startTime: attempt.startTime,
+        updatedAt: attempt.updatedAt,
+      },
     });
   } catch (error) {
     res.status(500).json({ message: error.message });

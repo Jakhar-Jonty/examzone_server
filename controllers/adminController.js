@@ -1,10 +1,11 @@
+import mongoose from 'mongoose';
 import Question from '../models/Question.js';
 import Exam from '../models/Exam.js';
 import User from '../models/User.js';
 import ExamAttempt from '../models/ExamAttempt.js';
 import Subscription from '../models/Subscription.js';
 import SubjectTopic from '../models/SubjectTopic.js';
-import { generateQuestions } from '../utils/aiQuestionGenerator.js';
+import { generateQuestions, translateQuestionContent } from '../utils/aiQuestionGenerator.js';
 import cloudinary from '../config/cloudinary.js';
 
 // Helper function to save/update subject-topic combination
@@ -12,14 +13,14 @@ const saveSubjectTopic = async (subject, topic, category, subCategory = null, ti
   try {
     const topicValue = topic || '';
     await SubjectTopic.findOneAndUpdate(
-      { 
-        subject: subject.trim(), 
-        topic: topicValue.trim(), 
+      {
+        subject: subject.trim(),
+        topic: topicValue.trim(),
         category,
         subCategory: subCategory || null,
         tier: tier || null
       },
-      { 
+      {
         $inc: { usageCount: 1 },
         $set: { lastUsed: new Date() }
       },
@@ -31,12 +32,55 @@ const saveSubjectTopic = async (subject, topic, category, subCategory = null, ti
   }
 };
 
+// ============================================================
+// AI TRANSLATION ENDPOINT
+// ============================================================
+export const translateQuestion = async (req, res) => {
+  try {
+    const { text, fromLanguage, toLanguage, options, explanation, detailedSolution } = req.body;
+
+    if (!text || !fromLanguage || !toLanguage) {
+      return res.status(400).json({ message: 'text, fromLanguage, and toLanguage are required' });
+    }
+
+    const validLanguages = ['English', 'Hindi', 'Tamil', 'Telugu', 'Marathi', 'Bengali', 'Gujarati'];
+    if (!validLanguages.includes(fromLanguage) || !validLanguages.includes(toLanguage)) {
+      return res.status(400).json({ message: `Language must be one of: ${validLanguages.join(', ')}` });
+    }
+
+    // Build content object to translate
+    const contentToTranslate = {
+      questionText: text,
+      ...(options && options.length > 0 ? { options } : {}),
+      ...(explanation ? { explanation } : {}),
+      ...(detailedSolution ? { detailedSolution } : {})
+    };
+
+    const translated = await translateQuestionContent(contentToTranslate, fromLanguage, toLanguage);
+
+    res.json({
+      message: 'Translation successful',
+      translation: {
+        questionText: translated.questionText || '',
+        options: translated.options || [],
+        explanation: translated.explanation || '',
+        detailedSolution: translated.detailedSolution || ''
+      }
+    });
+  } catch (error) {
+    console.error('Translation error:', error);
+    res.status(500).json({ message: error.message || 'Translation failed' });
+  }
+};
+
+// ============================================================
 // Question Management
+// ============================================================
 export const addQuestion = async (req, res) => {
   try {
     // Handle multer/Cloudinary errors
     if (req.fileError) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         message: req.fileError.message || 'File upload failed',
         error: req.fileError.message
       });
@@ -55,6 +99,30 @@ export const addQuestion = async (req, res) => {
       questionData.tier = null;
     }
 
+    // Parse JSON-stringified fields sent via FormData
+    if (typeof questionData.translations === 'string') {
+      try { questionData.translations = JSON.parse(questionData.translations); } catch { questionData.translations = []; }
+    }
+    if (typeof questionData.tags === 'string') {
+      try { questionData.tags = JSON.parse(questionData.tags); } catch { questionData.tags = []; }
+    }
+    if (typeof questionData.options === 'string') {
+      try { questionData.options = JSON.parse(questionData.options); } catch { questionData.options = []; }
+    }
+    if (typeof questionData.acceptableAnswers === 'string') {
+      try { questionData.acceptableAnswers = JSON.parse(questionData.acceptableAnswers); } catch { questionData.acceptableAnswers = []; }
+    }
+    if (typeof questionData.matchPairs === 'string') {
+      try { questionData.matchPairs = JSON.parse(questionData.matchPairs); } catch { questionData.matchPairs = []; }
+    }
+    if (typeof questionData.correctAnswers === 'string') {
+      try { questionData.correctAnswers = JSON.parse(questionData.correctAnswers); } catch { questionData.correctAnswers = []; }
+    }
+    // Remove undefined/empty optional fields
+    if (!questionData.bloomsTaxonomy) delete questionData.bloomsTaxonomy;
+    if (!questionData.cognitiveLevel) delete questionData.cognitiveLevel;
+    if (!questionData.status) questionData.status = 'Draft';
+
     if (req.file) {
       // req.file.path is set by CloudinaryStorage
       questionData.questionImage = req.file.path;
@@ -69,7 +137,7 @@ export const addQuestion = async (req, res) => {
 
     const question = new Question(questionData);
     await question.save();
-    
+
     console.log('Question saved:', {
       _id: question._id,
       category: question.category,
@@ -79,8 +147,8 @@ export const addQuestion = async (req, res) => {
 
     // Save subject-topic combination
     await saveSubjectTopic(
-      questionData.subject, 
-      questionData.topic, 
+      questionData.subject,
+      questionData.topic,
       questionData.category,
       questionData.subCategory,
       questionData.tier
@@ -89,16 +157,16 @@ export const addQuestion = async (req, res) => {
     res.status(201).json({ message: 'Question added successfully', question });
   } catch (error) {
     console.error('Error adding question:', error);
-    
+
     // Check for Cloudinary-specific errors
     if (error.message && error.message.includes('api_key')) {
-      return res.status(500).json({ 
+      return res.status(500).json({
         message: 'Cloudinary configuration error. Please check your API credentials in .env file.',
         error: 'Must supply api_key'
       });
     }
-    
-    res.status(500).json({ 
+
+    res.status(500).json({
       message: error.message || 'Failed to add question',
       error: process.env.NODE_ENV === 'development' ? error.stack : undefined
     });
@@ -107,14 +175,16 @@ export const addQuestion = async (req, res) => {
 
 export const getQuestions = async (req, res) => {
   try {
-    const { 
+    const {
       category, subCategory, tier, subject, topic, subTopic, difficulty, questionType,
       isPYQ, sourceExam, sourceYear, paperSet, chapter,
+      status,         // Filter by question status (e.g., 'Published', 'Draft')
+      bloomsTaxonomy, // Filter by Bloom's Taxonomy level
       ids, // Support fetching by specific IDs (comma-separated)
-      page = 1, limit = 50 
+      page = 1, limit = 50
     } = req.query;
     const query = {};
-    
+
     // If ids parameter is provided, fetch specific questions by ID
     if (ids) {
       const idArray = ids.split(',').map(id => id.trim()).filter(id => id);
@@ -135,7 +205,7 @@ export const getQuestions = async (req, res) => {
           .populate('tier', 'name code')
           .populate('createdBy', 'name')
           .sort({ createdAt: -1 });
-        
+
         return res.json({
           questions,
           totalPages: 1,
@@ -150,22 +220,22 @@ export const getQuestions = async (req, res) => {
     if (category && category !== 'none' && category !== '') {
       query.category = category;
     }
-    
+
     // If subCategory is provided, it must match exactly
     if (subCategory && subCategory !== 'none' && subCategory !== '') {
       query.subCategory = subCategory;
     }
-    
+
     // If tier is provided, it must match exactly
     if (tier && tier !== 'none' && tier !== '') {
       query.tier = tier;
     }
-    
+
     // Debug logging
     console.log('=== Question Query Debug ===');
     console.log('Query params received:', { category, subCategory, tier });
     console.log('MongoDB query built:', JSON.stringify(query, null, 2));
-    
+
     // Also log a sample of what's in the database
     if (category) {
       const sampleQuestions = await Question.find({ category })
@@ -175,7 +245,7 @@ export const getQuestions = async (req, res) => {
         .populate('tier', 'name')
         .limit(3)
         .lean();
-      console.log(`Sample questions in DB (category=${category}):`, 
+      console.log(`Sample questions in DB (category=${category}):`,
         sampleQuestions.map(q => ({
           category: q.category?.name || q.category,
           subCategory: q.subCategory?.name || q.subCategory,
@@ -183,14 +253,16 @@ export const getQuestions = async (req, res) => {
         }))
       );
     }
-    
+
     if (subject) query.subject = new RegExp(subject, 'i');
     if (topic) query.topic = new RegExp(topic, 'i');
     if (subTopic) query.subTopic = new RegExp(subTopic, 'i');
     if (chapter) query.chapter = new RegExp(chapter, 'i');
     if (difficulty) query.difficulty = difficulty;
     if (questionType) query.questionType = questionType;
-    
+    if (status) query.status = status;
+    if (bloomsTaxonomy) query.bloomsTaxonomy = bloomsTaxonomy;
+
     // PYQ filtering
     if (isPYQ !== undefined) query.isPYQ = isPYQ === 'true';
     if (sourceExam) query.sourceExam = new RegExp(sourceExam, 'i');
@@ -207,7 +279,7 @@ export const getQuestions = async (req, res) => {
       .skip((page - 1) * limit);
 
     const total = await Question.countDocuments(query);
-    
+
     console.log(`Found ${total} questions matching query`);
     if (questions.length > 0) {
       console.log('First question sample:', {
@@ -250,13 +322,34 @@ export const getQuestionById = async (req, res) => {
 export const updateQuestion = async (req, res) => {
   try {
     const question = await Question.findById(req.params.id);
-    
+
     if (!question) {
       return res.status(404).json({ message: 'Question not found' });
     }
 
-    Object.assign(question, req.body);
-    
+    const updateData = { ...req.body };
+
+    // Parse JSON-stringified fields sent via FormData
+    if (typeof updateData.translations === 'string') {
+      try { updateData.translations = JSON.parse(updateData.translations); } catch { updateData.translations = []; }
+    }
+    if (typeof updateData.tags === 'string') {
+      try { updateData.tags = JSON.parse(updateData.tags); } catch { updateData.tags = []; }
+    }
+    if (typeof updateData.options === 'string') {
+      try { updateData.options = JSON.parse(updateData.options); } catch { updateData.options = []; }
+    }
+    if (typeof updateData.matchPairs === 'string') {
+      try { updateData.matchPairs = JSON.parse(updateData.matchPairs); } catch { updateData.matchPairs = []; }
+    }
+    if (typeof updateData.correctAnswers === 'string') {
+      try { updateData.correctAnswers = JSON.parse(updateData.correctAnswers); } catch { updateData.correctAnswers = []; }
+    }
+    if (!updateData.bloomsTaxonomy) delete updateData.bloomsTaxonomy;
+    if (!updateData.cognitiveLevel) delete updateData.cognitiveLevel;
+
+    Object.assign(question, updateData);
+
     if (req.file) {
       // Delete old image from Cloudinary if exists
       if (question.questionImage) {
@@ -276,8 +369,8 @@ export const updateQuestion = async (req, res) => {
 
     // Update subject-topic combination
     await saveSubjectTopic(
-      question.subject, 
-      question.topic, 
+      question.subject,
+      question.topic,
       question.category,
       question.subCategory,
       question.tier
@@ -286,7 +379,7 @@ export const updateQuestion = async (req, res) => {
     res.json({ message: 'Question updated successfully', question });
   } catch (error) {
     console.error('Error updating question:', error);
-    res.status(500).json({ 
+    res.status(500).json({
       message: error.message || 'Failed to update question',
       error: process.env.NODE_ENV === 'development' ? error.stack : undefined
     });
@@ -296,7 +389,7 @@ export const updateQuestion = async (req, res) => {
 export const deleteQuestion = async (req, res) => {
   try {
     const question = await Question.findById(req.params.id);
-    
+
     if (!question) {
       return res.status(404).json({ message: 'Question not found' });
     }
@@ -312,7 +405,7 @@ export const deleteQuestion = async (req, res) => {
 export const deleteQuestions = async (req, res) => {
   try {
     const { questionIds } = req.body;
-    
+
     if (!questionIds || !Array.isArray(questionIds)) {
       return res.status(400).json({ message: 'Question IDs array is required' });
     }
@@ -328,11 +421,11 @@ export const deleteQuestions = async (req, res) => {
 // AI Question Generation
 export const generateAIGuestions = async (req, res) => {
   try {
-    const { category, subCategory, tier, subject, topic, subTopic, chapter, count, difficulty, language = 'English' } = req.body;
+    const { category, subCategory, tier, subject, topic, subTopic, chapter, count, difficulty, language = 'English', bloomsTaxonomy = '', questionType = 'MCQ' } = req.body;
 
     if (!category || !subject || !count || !difficulty) {
-      return res.status(400).json({ 
-        message: 'category, subject, count, and difficulty are required' 
+      return res.status(400).json({
+        message: 'category, subject, count, and difficulty are required'
       });
     }
 
@@ -366,9 +459,9 @@ export const generateAIGuestions = async (req, res) => {
       }
     }
 
-    const questions = await generateQuestions(categoryName, subject, topic || '', count, difficulty, language, subTopic || '', chapter || '');
+    const questions = await generateQuestions(categoryName, subject, topic || '', count, difficulty, language, subTopic || '', chapter || '', questionType, bloomsTaxonomy || '');
 
-    res.json({ 
+    res.json({
       message: 'Questions generated successfully',
       questions: questions.map(q => ({
         ...q,
@@ -395,16 +488,14 @@ export const saveAIGuestions = async (req, res) => {
       return res.status(400).json({ message: 'Questions array is required' });
     }
 
-    // Prepare questions for insertion with proper structure
+    // Prepare questions for insertion using new schema (translations[] format)
     const questionsToSave = questions.map(q => {
       const questionData = {
         questionText: q.questionText,
-        questionTextHindi: q.questionTextHindi || undefined,
         options: q.options || [],
-        optionsHindi: q.optionsHindi || undefined,
         correctAnswer: q.correctAnswer,
         explanation: q.explanation || '',
-        explanationHindi: q.explanationHindi || undefined,
+        detailedSolution: q.detailedSolution || undefined,
         subject: q.subject,
         topic: q.topic || undefined,
         subTopic: q.subTopic || undefined,
@@ -416,6 +507,16 @@ export const saveAIGuestions = async (req, res) => {
         marks: q.marks || 1,
         language: q.language || 'English',
         questionType: q.questionType || 'MCQ',
+        isAIGenerated: true,
+        humanVerified: false,
+        status: 'Draft',
+        // New schema: translations array
+        translations: Array.isArray(q.translations) ? q.translations : [],
+        // Optional metadata (set by AI, admin can edit later)
+        bloomsTaxonomy: q.bloomsTaxonomy || undefined,
+        cognitiveLevel: q.cognitiveLevel || undefined,
+        estimatedTime: q.estimatedTime || undefined,
+        tags: Array.isArray(q.tags) ? q.tags : [],
         createdBy: req.user._id
       };
 
@@ -434,15 +535,15 @@ export const saveAIGuestions = async (req, res) => {
     // Save subject-topic combinations for all saved questions
     for (const question of savedQuestions) {
       await saveSubjectTopic(
-        question.subject, 
-        question.topic, 
+        question.subject,
+        question.topic,
         question.category,
         question.subCategory,
         question.tier
       );
     }
 
-    res.json({ 
+    res.json({
       message: 'Questions saved successfully',
       count: savedQuestions.length,
       questions: savedQuestions
@@ -502,7 +603,7 @@ export const createExam = async (req, res) => {
           { language: 'Both' }
         ];
       }
-      
+
       const availableQuestions = await Question.find(query);
       const shuffled = availableQuestions.sort(() => 0.5 - Math.random());
       selectedQuestions = shuffled.slice(0, questionCount || 50).map(q => q._id);
@@ -529,7 +630,7 @@ export const createExam = async (req, res) => {
     // Handle scheduledTime based on status
     let scheduledDate;
     let expiresAt;
-    
+
     if (status === 'scheduled') {
       // Auto-schedule: set to current time to ensure immediate availability
       scheduledDate = new Date(Date.now());
@@ -606,10 +707,10 @@ export const createExam = async (req, res) => {
     await exam.save();
 
     const populatedExam = await Exam.findById(exam._id)
-      .populate('questions', 'questionText questionTextHindi options optionsHindi marks questionImage language difficulty category subject topic');
+      .populate('questions', 'questionText options marks questionImage language difficulty category subject topic translations tags bloomsTaxonomy');
 
-    res.status(201).json({ 
-      message: 'Exam created successfully', 
+    res.status(201).json({
+      message: 'Exam created successfully',
       exam: populatedExam,
       selectedQuestions: selectedQuestions.length
     });
@@ -628,12 +729,12 @@ export const getExams = async (req, res) => {
     if (category && category !== 'none' && category !== '') {
       query.category = category;
     }
-    
+
     // If subCategory is provided, it must match exactly
     if (subCategory && subCategory !== 'none' && subCategory !== '') {
       query.subCategory = subCategory;
     }
-    
+
     // If tier is provided, it must match exactly
     // This ensures exams for a specific tier only show up when viewing that tier
     if (tier && tier !== 'none' && tier !== '') {
@@ -646,7 +747,7 @@ export const getExams = async (req, res) => {
     }
 
     if (status) query.status = status;
-    
+
     // Filter out soft-deleted exams by default
     // Include exams where deleted field doesn't exist (for backward compatibility)
     if (includeDeleted !== 'true') {
@@ -658,10 +759,10 @@ export const getExams = async (req, res) => {
 
     // Check if questions should be populated (default: false for performance)
     const includeQuestions = req.query.includeQuestions === 'true';
-    
+
     // Check if we need minimal fields (for list view)
     const minimalFields = req.query.minimal === 'true';
-    
+
     const examQuery = Exam.find(query)
       .populate('category', 'name code')
       .populate('subCategory', 'name code')
@@ -671,12 +772,12 @@ export const getExams = async (req, res) => {
       .sort({ createdAt: -1 })
       .limit(limit * 1)
       .skip((page - 1) * limit);
-    
+
     // For minimal fields, only select what's needed for cards
     if (minimalFields) {
       examQuery.select('title duration totalMarks marksPerQuestion sections status scheduledTime deleted questions createdAt');
     }
-    
+
     // Only populate questions if explicitly requested
     if (includeQuestions) {
       examQuery.populate('questions', 'questionText marks');
@@ -684,21 +785,21 @@ export const getExams = async (req, res) => {
       // For non-minimal, get question count but don't populate
       // We'll add question count after query
     }
-    
+
     const exams = await examQuery;
-    
+
     // If minimal fields, add question count without populating
     if (minimalFields) {
       const examIds = exams.map(e => e._id);
       const examQuestionCounts = await Exam.find({ _id: { $in: examIds } })
         .select('_id questions')
         .lean();
-      
+
       const questionCountMap = {};
       examQuestionCounts.forEach(exam => {
         questionCountMap[exam._id.toString()] = exam.questions?.length || 0;
       });
-      
+
       // Add question count to each exam
       exams.forEach(exam => {
         exam.questions = questionCountMap[exam._id.toString()] || 0;
@@ -707,7 +808,7 @@ export const getExams = async (req, res) => {
 
     const total = await Exam.countDocuments(query);
 
-    res.json({ 
+    res.json({
       exams,
       totalPages: Math.ceil(total / limit),
       currentPage: page,
@@ -722,23 +823,23 @@ export const getExamById = async (req, res) => {
   try {
     const { id } = req.params;
     const { includeQuestions } = req.query;
-    
+
     const examQuery = Exam.findById(id)
       .populate('category', 'name code')
       .populate('subCategory', 'name code')
       .populate('tier', 'name code')
       .populate('createdBy', 'name');
-    
+
     if (includeQuestions === 'true') {
-      examQuery.populate('questions', 'questionText questionTextHindi options optionsHindi marks questionImage language difficulty category subject topic explanation');
+      examQuery.populate('questions', 'questionText options marks questionImage language difficulty category subject topic explanation translations tags bloomsTaxonomy detailedSolution');
     }
-    
+
     const exam = await examQuery;
-    
+
     if (!exam) {
       return res.status(404).json({ message: 'Exam not found' });
     }
-    
+
     res.json({ exam });
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -748,7 +849,7 @@ export const getExamById = async (req, res) => {
 export const updateExam = async (req, res) => {
   try {
     const exam = await Exam.findById(req.params.id);
-    
+
     if (!exam) {
       return res.status(404).json({ message: 'Exam not found' });
     }
@@ -790,7 +891,7 @@ export const updateExam = async (req, res) => {
     if (req.body.isTemplate !== undefined) exam.isTemplate = req.body.isTemplate;
     if (req.body.templateName !== undefined) exam.templateName = req.body.templateName;
     if (req.body.recurringSchedule !== undefined) exam.recurringSchedule = req.body.recurringSchedule || { enabled: false };
-    
+
     // Handle scheduledTime
     if (req.body.scheduledTime) {
       // If it's already an ISO string (from frontend conversion), use it directly
@@ -816,7 +917,7 @@ export const updateExam = async (req, res) => {
     await exam.save();
 
     const populatedExam = await Exam.findById(exam._id)
-      .populate('questions', 'questionText questionTextHindi options optionsHindi marks questionImage language difficulty category subject topic');
+      .populate('questions', 'questionText options marks questionImage language difficulty category subject topic translations tags bloomsTaxonomy');
 
     res.json({ message: 'Exam updated successfully', exam: populatedExam });
   } catch (error) {
@@ -827,7 +928,7 @@ export const updateExam = async (req, res) => {
 export const publishExam = async (req, res) => {
   try {
     const exam = await Exam.findById(req.params.id);
-    
+
     if (!exam) {
       return res.status(404).json({ message: 'Exam not found' });
     }
@@ -849,7 +950,7 @@ export const publishExam = async (req, res) => {
     await exam.save();
 
     const populatedExam = await Exam.findById(exam._id)
-      .populate('questions', 'questionText questionTextHindi options optionsHindi marks questionImage language difficulty category subject topic');
+      .populate('questions', 'questionText options marks questionImage language difficulty category subject topic translations tags bloomsTaxonomy');
 
     res.json({ message: 'Exam published successfully', exam: populatedExam });
   } catch (error) {
@@ -860,7 +961,7 @@ export const publishExam = async (req, res) => {
 export const duplicateExam = async (req, res) => {
   try {
     const originalExam = await Exam.findById(req.params.id);
-    
+
     if (!originalExam) {
       return res.status(404).json({ message: 'Exam not found' });
     }
@@ -912,7 +1013,7 @@ export const duplicateExam = async (req, res) => {
 export const unpublishExam = async (req, res) => {
   try {
     const exam = await Exam.findById(req.params.id);
-    
+
     if (!exam) {
       return res.status(404).json({ message: 'Exam not found' });
     }
@@ -941,7 +1042,7 @@ export const unpublishExam = async (req, res) => {
 export const deleteExam = async (req, res) => {
   try {
     const exam = await Exam.findById(req.params.id);
-    
+
     if (!exam) {
       return res.status(404).json({ message: 'Exam not found' });
     }
@@ -965,7 +1066,7 @@ export const deleteExam = async (req, res) => {
 export const restoreExam = async (req, res) => {
   try {
     const exam = await Exam.findById(req.params.id);
-    
+
     if (!exam) {
       return res.status(404).json({ message: 'Exam not found' });
     }
@@ -994,7 +1095,7 @@ export const getSubjectsAndTopics = async (req, res) => {
   try {
     const { category } = req.query;
     const query = {};
-    
+
     if (category) {
       query.category = category;
     }
@@ -1036,7 +1137,7 @@ export const getDashboardStats = async (req, res) => {
     const totalUsers = await User.countDocuments({ role: 'user' });
     const totalQuestions = await Question.countDocuments();
     const totalExams = await Exam.countDocuments({ status: { $ne: 'draft' } });
-    
+
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const todayAttempts = await ExamAttempt.countDocuments({
@@ -1115,7 +1216,7 @@ export const upgradeUserSubscription = async (req, res) => {
     // Calculate expiry date
     const now = new Date();
     const months = plan === 'monthly' ? 1 : 12;
-    
+
     // If user already has premium and subscription hasn't expired, extend from current expiry
     // Otherwise, start from now
     let expiryDate;
@@ -1202,7 +1303,7 @@ export const getQuestionBankStats = async (req, res) => {
     if (category) query.category = category;
 
     const totalQuestions = await Question.countDocuments(query);
-    
+
     // Difficulty distribution
     const difficultyStats = await Question.aggregate([
       { $match: query },
@@ -1278,7 +1379,7 @@ export const getQuestionBankStats = async (req, res) => {
 export const getExamPerformanceAnalytics = async (req, res) => {
   try {
     const { id } = req.params;
-    
+
     // Get all completed attempts for this exam
     const attempts = await ExamAttempt.find({
       exam: id,
@@ -1358,7 +1459,7 @@ export const getExamPerformanceAnalytics = async (req, res) => {
 export const getExamAnalytics = async (req, res) => {
   try {
     const { questionIds } = req.body;
-    
+
     if (!questionIds || !Array.isArray(questionIds) || questionIds.length === 0) {
       return res.status(400).json({ message: 'Question IDs array is required' });
     }
@@ -1397,7 +1498,7 @@ export const getExamAnalytics = async (req, res) => {
       return sum + weight;
     }, 0);
     const estimatedDifficulty = weightedSum / totalQuestions;
-    
+
     let difficultyLevel = 'Medium';
     if (estimatedDifficulty < 1.5) difficultyLevel = 'Easy';
     else if (estimatedDifficulty > 2.5) difficultyLevel = 'Hard';

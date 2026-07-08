@@ -19,22 +19,45 @@ export const getProfile = async (req, res) => {
 
 export const updateProfile = async (req, res) => {
   try {
-    const { name, email, examPreparations, preferredLanguage, profileImage } = req.body;
+    const {
+      name, email, examPreparations, preferredLanguage, profileImage,
+      dateOfBirth, gender, state, city, bio, preferences
+    } = req.body;
+
     const user = await User.findById(req.user._id);
 
     if (name) user.name = name;
     if (email) user.email = email;
-    if (examPreparations) user.examPreparations = examPreparations;
     if (preferredLanguage) user.preferredLanguage = preferredLanguage;
     if (profileImage) user.profileImage = profileImage;
 
+    // Personal details
+    if (dateOfBirth) user.dateOfBirth = new Date(dateOfBirth);
+    if (gender) user.gender = gender;
+    if (state !== undefined) user.state = state;
+    if (city !== undefined) user.city = city;
+    if (bio !== undefined) user.bio = bio;
+
+    // Merge preferences (don't overwrite the whole object)
+    if (preferences && typeof preferences === 'object') {
+      user.preferences = { ...user.preferences.toObject?.() || user.preferences, ...preferences };
+    }
+
+    // Normalize examPreparations to new format if provided
+    if (examPreparations) {
+      const { normalizeExamPreparations } = await import('../utils/examPrepHelper.js');
+      user.examPreparations = await normalizeExamPreparations(examPreparations);
+    }
+
     await user.save();
 
-    res.json({ message: 'Profile updated successfully', user });
+    const updatedUser = await User.findById(user._id).select('-password');
+    res.json({ message: 'Profile updated successfully', user: updatedUser });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
 };
+
 
 // Upload profile image
 export const uploadProfileImage = async (req, res) => {
@@ -67,10 +90,10 @@ export const uploadProfileImage = async (req, res) => {
 
 export const getExamHistory = async (req, res) => {
   try {
-    const { 
-      category, 
-      search = '', 
-      sortBy = 'date', 
+    const {
+      category,
+      search = '',
+      sortBy = 'date',
       sortOrder = 'desc',
       startDate = '',
       endDate = '',
@@ -89,9 +112,9 @@ export const getExamHistory = async (req, res) => {
         categoryMatch = { category: category };
       } else {
         // It's a string, find category by code
-        const categoryDoc = await Category.findOne({ 
+        const categoryDoc = await Category.findOne({
           code: category.toUpperCase(),
-          isActive: true 
+          isActive: true
         });
         if (categoryDoc) {
           categoryMatch = { category: categoryDoc._id };
@@ -194,38 +217,20 @@ export const getDashboardStats = async (req, res) => {
     // Get available exams from last 24 hours only
     // MongoDB stores dates in UTC, comparisons are done in UTC
     const last24Hours = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-    
-    // Handle both old string categories and new ObjectId categories
-    // First, try to find categories by code/name if examPreparations contains strings
-    const Category = (await import('../models/Category.js')).default;
-    const categoryIds = [];
-    
-    if (user.examPreparations && user.examPreparations.length > 0) {
-      // Check if examPreparations contains ObjectIds or strings
-      const firstPrep = user.examPreparations[0];
-      if (typeof firstPrep === 'string') {
-        // Old format: strings like "SSC", "Banking", "HSSC"
-        // Find categories by code
-        const categories = await Category.find({ 
-          code: { $in: user.examPreparations.map(p => p.toUpperCase()) },
-          isActive: true 
-        });
-        categoryIds.push(...categories.map(c => c._id));
-      } else {
-        // New format: already ObjectIds
-        categoryIds.push(...user.examPreparations);
-      }
-    }
-    
+
+    // Use utility helper to get category IDs from examPreparations
+    const { getCategoryIdsFromExamPreparations } = await import('../utils/examPrepHelper.js');
+    const categoryIds = await getCategoryIdsFromExamPreparations(user.examPreparations);
+
     // Build query - handle both old and new category formats
-    const categoryQuery = categoryIds.length > 0 
+    const categoryQuery = categoryIds.length > 0
       ? { category: { $in: categoryIds } }
       : {}; // If no categories found, return empty (or you could remove this filter)
-    
+
     const availableExams = await Exam.find({
       ...categoryQuery,
       status: { $in: ['scheduled', 'active'] },
-      scheduledTime: { 
+      scheduledTime: {
         $gte: last24Hours, // Within last 24 hours
         $lte: now // Already started (or set to now for immediate availability)
       },
@@ -245,9 +250,9 @@ export const getDashboardStats = async (req, res) => {
         }
       ]
     })
-    .select('-questions') // Don't populate questions - only need count
-    .sort({ scheduledTime: -1 })
-    .limit(10);
+      .select('-questions') // Don't populate questions - only need count
+      .sort({ scheduledTime: -1 })
+      .limit(10);
 
     // Get attempt information for each exam
     const examIds = availableExams.map(exam => exam._id);
@@ -271,7 +276,7 @@ export const getDashboardStats = async (req, res) => {
     const examQuestionCounts = await Exam.find({ _id: { $in: examIdsForCounts } })
       .select('_id questions')
       .lean();
-    
+
     const questionCountMap = {};
     examQuestionCounts.forEach(exam => {
       questionCountMap[exam._id.toString()] = exam.questions?.length || 0;
@@ -309,12 +314,12 @@ export const getDashboardStats = async (req, res) => {
       status: 'published',
       category: { $in: user.examPreparations }
     };
-    
+
     // Only filter by isPremium if user is not premium
     if (user.subscriptionStatus !== 'premium') {
       articleQuery.isPremium = false;
     }
-    
+
     const recentArticles = await Article.find(articleQuery)
       .select('title category thumbnail createdAt isPremium')
       .sort({ createdAt: -1 })
@@ -352,7 +357,7 @@ export const getDashboardStats = async (req, res) => {
         .sort({ endTime: -1, createdAt: -1 })
         .limit(5)
         .lean();
-      
+
       // Filter out attempts where exam was deleted or not found
       recentAttempts = recentAttempts.filter(attempt => attempt.exam);
     } catch (error) {
@@ -428,42 +433,50 @@ export const getDashboardStats = async (req, res) => {
 
     // Get exam and question counts for categories
     const allCategoryIds = allCategories.map(c => c._id);
-    const subCategoryIds = allCategories.flatMap(c => 
+    const subCategoryIds = allCategories.flatMap(c =>
       (c.subCategories || []).map(sc => sc._id)
     );
 
     const examCounts = await Exam.aggregate([
-      { $match: { 
+      {
+        $match: {
           $or: [
             { category: { $in: allCategoryIds } },
             { subCategory: { $in: subCategoryIds } }
           ],
           deleted: { $ne: true }
-      }},
-      { $group: {
+        }
+      },
+      {
+        $group: {
           _id: {
             category: "$category",
             subCategory: "$subCategory"
           },
           count: { $sum: 1 }
-      }}
+        }
+      }
     ]);
 
     const questionCounts = await Question.aggregate([
-      { $match: { 
+      {
+        $match: {
           $or: [
             { category: { $in: allCategoryIds } },
             { subCategory: { $in: subCategoryIds } }
           ],
           deleted: { $ne: true }
-      }},
-      { $group: {
+        }
+      },
+      {
+        $group: {
           _id: {
             category: "$category",
             subCategory: "$subCategory"
           },
           count: { $sum: 1 }
-      }}
+        }
+      }
     ]);
 
     const examCountMap = {};
@@ -523,10 +536,12 @@ export const getDashboardStats = async (req, res) => {
 };
 
 export const getAllExams = async (req, res) => {
+  console.log("getAllExams")
   try {
     const user = await User.findById(req.user._id);
     const now = new Date();
-    
+    // console.log("User", user)
+
     // Get query parameters
     const {
       page = 1,
@@ -546,25 +561,9 @@ export const getAllExams = async (req, res) => {
       minimal = 'false'
     } = req.query;
 
-    // Handle both old string categories and new ObjectId categories
-    const categoryIds = [];
-    
-    if (user.examPreparations && user.examPreparations.length > 0) {
-      // Check if examPreparations contains ObjectIds or strings
-      const firstPrep = user.examPreparations[0];
-      if (typeof firstPrep === 'string' || firstPrep instanceof String) {
-        // Old format: strings like "SSC", "Banking", "HSSC"
-        // Find categories by code
-        const categories = await Category.find({ 
-          code: { $in: user.examPreparations.map(p => p.toUpperCase()) },
-          isActive: true 
-        });
-        categoryIds.push(...categories.map(c => c._id));
-      } else {
-        // New format: already ObjectIds
-        categoryIds.push(...user.examPreparations);
-      }
-    }
+    // Use utility helper to get category IDs from examPreparations
+    const { getCategoryIdsFromExamPreparations } = await import('../utils/examPrepHelper.js');
+    const categoryIds = await getCategoryIdsFromExamPreparations(user.examPreparations);
 
     // Build query
     const query = {
@@ -595,7 +594,7 @@ export const getAllExams = async (req, res) => {
       // Check if category is already an ObjectId
       const mongoose = (await import('mongoose')).default;
       let categoryId = null;
-      
+
       if (mongoose.Types.ObjectId.isValid(category)) {
         // It's already an ObjectId
         categoryId = new mongoose.Types.ObjectId(category);
@@ -608,12 +607,12 @@ export const getAllExams = async (req, res) => {
           ],
           isActive: true
         });
-        
+
         if (categoryDoc) {
           categoryId = categoryDoc._id;
         }
       }
-      
+
       if (categoryId) {
         // Only apply filter if user has this category in their examPreparations
         if (categoryIds.some(id => id.toString() === categoryId.toString())) {
@@ -669,11 +668,11 @@ export const getAllExams = async (req, res) => {
       if (topic) {
         questionQuery.topic = { $regex: topic, $options: 'i' };
       }
-      
+
       // Find questions matching subject/topic
       const matchingQuestions = await Question.find(questionQuery).select('_id');
       const questionIds = matchingQuestions.map(q => q._id);
-      
+
       // Filter exams that have at least one question matching the criteria
       if (questionIds.length > 0) {
         query.questions = { $in: questionIds };
@@ -689,7 +688,7 @@ export const getAllExams = async (req, res) => {
 
     // Get total count
     const total = await Exam.countDocuments(query);
-    
+
     // For minimal fields, only select what's needed
     let selectFields = '';
     if (minimal === 'true') {
@@ -706,15 +705,15 @@ export const getAllExams = async (req, res) => {
       .sort(sortOptions)
       .limit(limit * 1)
       .skip((page - 1) * limit);
-    
+
     const exams = await examQuery;
-    
+
     // Get question counts separately (more efficient)
     const examIds = exams.map(exam => exam._id);
     const examQuestionCounts = await Exam.find({ _id: { $in: examIds } })
       .select('_id questions')
       .lean();
-    
+
     const questionCountMap = {};
     examQuestionCounts.forEach(exam => {
       questionCountMap[exam._id.toString()] = exam.questions?.length || 0;
@@ -769,7 +768,7 @@ export const getAnalytics = async (req, res) => {
     const { timeRange = 'all' } = req.query;
     const user = req.user._id;
     const now = new Date();
-    
+
     // Calculate date range
     let startDate = new Date(0); // Beginning of time
     if (timeRange === 'week') {
@@ -859,7 +858,7 @@ export const getAnalytics = async (req, res) => {
     const midPoint = Math.floor(allAttempts.length / 2);
     const firstHalf = allAttempts.slice(midPoint).map(a => a.percentage);
     const secondHalf = allAttempts.slice(0, midPoint).map(a => a.percentage);
-    
+
     const firstHalfAvg = firstHalf.length > 0
       ? firstHalf.reduce((sum, s) => sum + s, 0) / firstHalf.length
       : 0;
@@ -895,7 +894,7 @@ export const getSubjectsAndTopics = async (req, res) => {
   try {
     const { category } = req.query;
     const query = {};
-    
+
     if (category) {
       // Handle both ObjectId and string category
       const mongoose = (await import('mongoose')).default;
@@ -903,9 +902,9 @@ export const getSubjectsAndTopics = async (req, res) => {
         query.category = category;
       } else {
         // If it's a string (category code), find the category first
-        const categoryDoc = await Category.findOne({ 
+        const categoryDoc = await Category.findOne({
           code: category.toUpperCase(),
-          isActive: true 
+          isActive: true
         });
         if (categoryDoc) {
           query.category = categoryDoc._id;
@@ -926,7 +925,7 @@ export const getSubjectsAndTopics = async (req, res) => {
     subjectTopics.forEach(st => {
       const categoryId = st.category?._id?.toString() || st.category?.toString() || '';
       const categoryName = st.category?.name || st.category?.code || categoryId;
-      
+
       if (!grouped[st.subject]) {
         grouped[st.subject] = {
           subject: st.subject,
@@ -1070,8 +1069,8 @@ export const getSavedQuestions = async (req, res) => {
       if (search) {
         const searchLower = search.toLowerCase();
         const matchesText = q.questionText?.toLowerCase().includes(searchLower) ||
-                           q.questionTextHindi?.toLowerCase().includes(searchLower) ||
-                           sq.notes?.toLowerCase().includes(searchLower);
+          q.questionTextHindi?.toLowerCase().includes(searchLower) ||
+          sq.notes?.toLowerCase().includes(searchLower);
         if (!matchesText) return false;
       }
 
