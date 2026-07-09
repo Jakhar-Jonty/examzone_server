@@ -26,27 +26,21 @@ const app = express();
 const PORT = process.env.PORT || 8000;
 const isServerless = !!process.env.VERCEL;
 
-// Middleware
 app.use(cors({ origin: '*', credentials: true }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Ensure DB is connected before handling API requests on serverless.
 app.use(async (req, res, next) => {
   if (req.path === '/api/health' || req.path === '/health') return next();
   try {
     await connectDB();
     return next();
   } catch (error) {
-    console.error('DB middleware failed:', error.message);
-    return res.status(503).json({
-      message: 'Database connection failed',
-      details: error.message,
-    });
+    console.error('DB connection failed:', error.message);
+    return res.status(503).json({ message: 'Database connection failed' });
   }
 });
 
-// Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/user', userRoutes);
 app.use('/api/exams', examRoutes);
@@ -62,30 +56,14 @@ app.use('/api/reviews', reviewRoutes);
 app.use('/api/study-plans', studyPlanRoutes);
 app.use('/api/practice-sessions', practiceSessionRoutes);
 
-// Health check (add ?db=1 to test MongoDB connection)
-app.get('/api/health', async (req, res) => {
-  const payload = {
+app.get('/api/health', (req, res) => {
+  res.json({
     status: 'OK',
     message: 'GopPrep API is running',
     timestamp: new Date().toISOString(),
-    mongoConfigured: !!process.env.MONGODB_URI,
-  };
-
-  if (req.query.db === '1') {
-    try {
-      await connectDB();
-      payload.database = 'connected';
-    } catch (error) {
-      payload.status = 'DEGRADED';
-      payload.database = 'failed';
-      payload.dbError = error.message;
-    }
-  }
-
-  res.json(payload);
+  });
 });
 
-// Platform/liveness health route
 app.get('/health', (req, res) => {
   res.json({
     status: 'OK',
@@ -94,22 +72,15 @@ app.get('/health', (req, res) => {
   });
 });
 
-// Error handling middleware
 app.use((err, req, res, next) => {
   console.error(err.stack);
   res.status(err.status || 500).json({
     message: err.message || 'Internal Server Error',
-    error: process.env.NODE_ENV === 'development' ? err : {}
+    error: process.env.NODE_ENV === 'development' ? err : {},
   });
 });
 
-if (isServerless) {
-  // Vercel serverless runtime: don't call listen()/process.exit().
-  // Keep this non-blocking so /api/health can still return even if DB is down.
-  connectDB().catch((error) => {
-    console.error('DB connection failed (serverless):', error.message);
-  });
-} else {
+if (!isServerless) {
   const httpServer = http.createServer(app);
 
   const io = new Server(httpServer, {
@@ -141,4 +112,3 @@ if (isServerless) {
 }
 
 export default app;
-
