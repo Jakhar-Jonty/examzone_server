@@ -39,7 +39,10 @@ app.use(async (req, res, next) => {
     return next();
   } catch (error) {
     console.error('DB middleware failed:', error.message);
-    return res.status(500).json({ message: 'Database connection failed' });
+    return res.status(503).json({
+      message: 'Database connection failed',
+      details: error.message,
+    });
   }
 });
 
@@ -59,13 +62,27 @@ app.use('/api/reviews', reviewRoutes);
 app.use('/api/study-plans', studyPlanRoutes);
 app.use('/api/practice-sessions', practiceSessionRoutes);
 
-// Health check
-app.get('/api/health', (req, res) => {
-  res.json({
+// Health check (add ?db=1 to test MongoDB connection)
+app.get('/api/health', async (req, res) => {
+  const payload = {
     status: 'OK',
     message: 'GopPrep API is running',
     timestamp: new Date().toISOString(),
-  });
+    mongoConfigured: !!process.env.MONGODB_URI,
+  };
+
+  if (req.query.db === '1') {
+    try {
+      await connectDB();
+      payload.database = 'connected';
+    } catch (error) {
+      payload.status = 'DEGRADED';
+      payload.database = 'failed';
+      payload.dbError = error.message;
+    }
+  }
+
+  res.json(payload);
 });
 
 // Platform/liveness health route

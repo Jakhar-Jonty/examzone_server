@@ -3,6 +3,10 @@ import mongoose from 'mongoose';
 let cachedConnection = null;
 let connectingPromise = null;
 
+const isDeployed =
+  process.env.VERCEL === '1' ||
+  process.env.NODE_ENV === 'production';
+
 const connectDB = async () => {
   if (cachedConnection && mongoose.connection.readyState === 1) {
     return cachedConnection;
@@ -11,16 +15,21 @@ const connectDB = async () => {
     return connectingPromise;
   }
 
-  const isProd = process.env.NODE_ENV === 'production';
-  const mongoUri = process.env.MONGODB_URI;
+  const mongoUri = process.env.MONGODB_URI?.trim();
 
-  // In production/serverless, fail fast with a clear message.
-  if (isProd && !mongoUri) {
-    throw new Error('MONGODB_URI is missing in production environment');
+  if (isDeployed && !mongoUri) {
+    throw new Error('MONGODB_URI is not set in Vercel environment variables');
   }
 
+  const uri = mongoUri || 'mongodb://localhost:27017/goprep';
+
   connectingPromise = mongoose
-    .connect(mongoUri || 'mongodb://localhost:27017/goprep')
+    .connect(uri, {
+      serverSelectionTimeoutMS: 10000,
+      socketTimeoutMS: 45000,
+      maxPoolSize: 10,
+      bufferCommands: false,
+    })
     .then((conn) => {
       cachedConnection = conn;
       console.log(`MongoDB Connected: ${conn.connection.host}`);
@@ -29,7 +38,10 @@ const connectDB = async () => {
     .catch((error) => {
       console.error(`MongoDB connection failed: ${error.message}`);
       if (error.message.includes('bad auth')) {
-        console.error('Hint: Atlas username/password may be wrong. For local dev use MONGODB_URI=mongodb://localhost:27017/goprep');
+        console.error('Hint: check Atlas username/password in MONGODB_URI');
+      }
+      if (error.message.includes('timed out') || error.message.includes('ENOTFOUND')) {
+        console.error('Hint: allow 0.0.0.0/0 in Atlas Network Access for Vercel');
       }
       throw error;
     })
@@ -41,4 +53,3 @@ const connectDB = async () => {
 };
 
 export default connectDB;
-
