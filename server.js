@@ -26,20 +26,27 @@ const app = express();
 const PORT = process.env.PORT || 8000;
 const isServerless = !!process.env.VERCEL;
 
+if (!isServerless) {
+  app.set('trust proxy', 1);
+}
+
 app.use(cors({ origin: '*', credentials: true }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-app.use(async (req, res, next) => {
-  if (req.path === '/api/health' || req.path === '/health') return next();
-  try {
-    await connectDB();
-    return next();
-  } catch (error) {
-    console.error('DB connection failed:', error.message);
-    return res.status(503).json({ message: 'Database connection failed' });
-  }
-});
+// Serverless only: connect DB per request. EC2 connects once at startup.
+if (isServerless) {
+  app.use(async (req, res, next) => {
+    if (req.path === '/api/health' || req.path === '/health') return next();
+    try {
+      await connectDB();
+      return next();
+    } catch (error) {
+      console.error('DB connection failed:', error.message);
+      return res.status(503).json({ message: 'Database connection failed' });
+    }
+  });
+}
 
 app.use('/api/auth', authRoutes);
 app.use('/api/user', userRoutes);
@@ -99,7 +106,7 @@ if (!isServerless) {
   const startServer = async () => {
     try {
       await connectDB();
-      httpServer.listen(PORT, () => {
+      httpServer.listen(PORT, '0.0.0.0', () => {
         console.log(`Server running on port ${PORT}`);
       });
     } catch (error) {
