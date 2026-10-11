@@ -4,6 +4,9 @@ import Question from '../models/Question.js';
 import ExamAttempt from '../models/ExamAttempt.js';
 import UserAnalytics from '../models/UserAnalytics.js';
 import SavedQuestion from '../models/SavedQuestion.js';
+import { istDayStart } from '../utils/istDay.js';
+
+const DAILY_QUIZ_SIZE = 10;
 
 const DIFFICULTY_GROUPS = {
   Easy: ['Easy', 'VeryEasy'],
@@ -221,7 +224,7 @@ export const getSessions = async (req, res) => {
 export const getSession = async (req, res) => {
   try {
     const session = await PracticeSession.findOne({ _id: req.params.id, user: req.user._id })
-      .populate('questions', 'questionText questionTextHindi options optionsHindi correctAnswer explanation difficulty marks subject topic')
+      .populate('questions', 'questionText questionTextHindi options optionsHindi correctAnswer explanation explanationHindi translations difficulty marks subject topic')
       .lean();
     if (!session) return res.status(404).json({ message: 'Session not found' });
     res.json({ session });
@@ -236,7 +239,19 @@ export const createSession = async (req, res) => {
 
     if (!sessionType) return res.status(400).json({ message: 'sessionType is required' });
 
-    const count = Math.min(100, Math.max(5, parseInt(questionCount, 10) || 20));
+    // One daily quiz per IST day: return today's session instead of making another.
+    if (sessionType === 'daily-quiz') {
+      const today = await PracticeSession.findOne({
+        user: req.user._id,
+        sessionType: 'daily-quiz',
+        startTime: { $gte: istDayStart() },
+      }).sort({ startTime: -1 });
+      if (today) return res.json({ session: today, existing: true });
+    }
+
+    const count = sessionType === 'daily-quiz'
+      ? DAILY_QUIZ_SIZE
+      : Math.min(100, Math.max(5, parseInt(questionCount, 10) || 20));
 
     if (sessionType === 'mistakes') {
       const {

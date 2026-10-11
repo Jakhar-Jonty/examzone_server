@@ -9,7 +9,7 @@ const practiceSessionSchema = new mongoose.Schema({
   // Session Type
   sessionType: {
     type: String,
-    enum: ['topic-wise', 'subject-wise', 'difficulty-based', 'weak-areas', 'random', 'custom', 'mistakes', 'pyq'],
+    enum: ['topic-wise', 'subject-wise', 'difficulty-based', 'weak-areas', 'random', 'custom', 'mistakes', 'pyq', 'daily-quiz'],
     required: true
   },
   

@@ -8,7 +8,9 @@ import SubjectTopic from '../models/SubjectTopic.js';
 import SavedQuestion from '../models/SavedQuestion.js';
 import Category from '../models/Category.js';
 import UserAnalytics from '../models/UserAnalytics.js';
+import PracticeSession from '../models/PracticeSession.js';
 import cloudinary from '../config/cloudinary.js';
+import { istDayStart } from '../utils/istDay.js';
 
 export const getProfile = async (req, res) => {
   try {
@@ -512,7 +514,55 @@ export const getDashboardStats = async (req, res) => {
       }))
     }));
 
+    // Home screen extras: target exam names, upcoming live tests, today's daily quiz.
+    const prepIds = (user.examPreparations || [])
+      .flatMap((ep) => [ep?.category, ep?.subCategory])
+      .filter((id) => id && mongoose.Types.ObjectId.isValid(id));
+    const [prepCategories, upcomingExams, dailyQuizSession] = await Promise.all([
+      prepIds.length
+        ? Category.find({ _id: { $in: prepIds } }).select('name code').lean()
+        : [],
+      Exam.find({
+        ...categoryQuery,
+        status: { $in: ['scheduled', 'active'] },
+        scheduledTime: { $gt: now },
+        $or: [{ deleted: false }, { deleted: { $exists: false } }],
+      })
+        .select('title category scheduledTime duration totalMarks totalQuestions examType')
+        .sort({ scheduledTime: 1 })
+        .limit(3)
+        .lean(),
+      PracticeSession.findOne({
+        user: user._id,
+        sessionType: 'daily-quiz',
+        startTime: { $gte: istDayStart(now) },
+      })
+        .select('isCompleted totalQuestions correctAnswers accuracy')
+        .lean(),
+    ]);
+    const prepNameById = new Map(prepCategories.map((c) => [c._id.toString(), c.name]));
+    const targetExams = (user.examPreparations || [])
+      .filter((ep) => ep?.category && prepNameById.has(ep.category.toString()))
+      .map((ep) => ({
+        category: ep.category,
+        subCategory: ep.subCategory || null,
+        name: prepNameById.get(ep.subCategory?.toString()) || prepNameById.get(ep.category.toString()),
+        isPrimary: !!ep.isPrimary,
+      }))
+      .sort((a, b) => Number(b.isPrimary) - Number(a.isPrimary));
+
     res.json({
+      targetExams,
+      upcomingExams,
+      dailyQuiz: dailyQuizSession
+        ? {
+            sessionId: dailyQuizSession._id,
+            isCompleted: dailyQuizSession.isCompleted,
+            totalQuestions: dailyQuizSession.totalQuestions,
+            correctAnswers: dailyQuizSession.correctAnswers,
+            accuracy: dailyQuizSession.accuracy,
+          }
+        : null,
       availableExams: examsWithAttempts,
       categories: categoriesWithCounts,
       stats: {
