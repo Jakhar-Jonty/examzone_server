@@ -48,13 +48,16 @@ export const rankForXp = (xp) => {
 /**
  * Award XP, recompute rank, and grant performance badges for a completed attempt.
  * Returns a summary used to drive the post-exam celebration on the client.
+ *
+ * Practice sessions reuse this with `xp` (their own XP amount) and
+ * `examBadges: false`, since the score badges are described as exam achievements.
  */
-export const awardForAttempt = async (userId, { correctAnswers, percentage }) => {
+export const awardForAttempt = async (userId, { correctAnswers, percentage, xp, examBadges = true }) => {
   try {
     const user = await User.findById(userId);
     if (!user) return null;
 
-    const xpGained = computeXp({ correctAnswers, percentage });
+    const xpGained = xp ?? computeXp({ correctAnswers, percentage });
     const prevRank = user.rank;
     user.xp = (user.xp || 0) + xpGained;
     user.rank = rankForXp(user.xp);
@@ -79,8 +82,8 @@ export const awardForAttempt = async (userId, { correctAnswers, percentage }) =>
     if (completedCount >= 10) grant(PERF_BADGES.TEN_EXAMS);
     if (completedCount >= 50) grant(PERF_BADGES.FIFTY_EXAMS);
     if (completedCount >= 100) grant(PERF_BADGES.HUNDRED_EXAMS);
-    if (percentage >= 100) grant(PERF_BADGES.PERFECT_SCORE);
-    else if (percentage >= 90) grant(PERF_BADGES.SHARPSHOOTER);
+    if (examBadges && percentage >= 100) grant(PERF_BADGES.PERFECT_SCORE);
+    else if (examBadges && percentage >= 90) grant(PERF_BADGES.SHARPSHOOTER);
 
     await user.save();
 

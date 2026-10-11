@@ -5,8 +5,12 @@ import ExamAttempt from '../models/ExamAttempt.js';
 import UserAnalytics from '../models/UserAnalytics.js';
 import SavedQuestion from '../models/SavedQuestion.js';
 import { istDayStart } from '../utils/istDay.js';
+import { syncMistakeNotebook } from '../utils/mistakeNotebook.js';
+import { updateStudyStreak } from '../utils/streakManager.js';
+import { awardForAttempt, computeXp } from '../utils/awardEngine.js';
 
 const DAILY_QUIZ_SIZE = 10;
+const PRACTICE_XP_CAP = 150;
 
 const DIFFICULTY_GROUPS = {
   Easy: ['Easy', 'VeryEasy'],
@@ -480,7 +484,40 @@ export const completeSession = async (req, res) => {
     session.isCompleted = true;
 
     await session.save();
-    res.json({ session });
+
+    // Practice counts as studying: streak, XP and Wrong Book, like an exam.
+    // Nothing for a session where no question was answered.
+    let streak = null;
+    let rewards = null;
+    let mistakeNotebook = { added: 0, updated: 0, total: 0 };
+    if (correct + incorrect > 0) {
+      try {
+        const answered = await PracticeSession.findById(session._id)
+          .select('answers')
+          .populate('answers.question', 'subject topic')
+          .lean();
+        mistakeNotebook = await syncMistakeNotebook(req.user._id, { answers: answered.answers });
+      } catch (mistakeErr) {
+        console.error('mistakeNotebook sync failed:', mistakeErr.message);
+      }
+
+      streak = await updateStudyStreak(req.user._id);
+
+      // Daily quiz earns full exam XP; other practice earns half, capped,
+      // so long practice sessions can't be farmed for XP.
+      const examXp = computeXp({ correctAnswers: correct, percentage: session.accuracy });
+      const xp = session.sessionType === 'daily-quiz'
+        ? examXp
+        : Math.min(PRACTICE_XP_CAP, Math.round(examXp / 2));
+      rewards = await awardForAttempt(req.user._id, {
+        correctAnswers: correct,
+        percentage: session.accuracy,
+        xp,
+        examBadges: false,
+      });
+    }
+
+    res.json({ session, streak, rewards, mistakeNotebook });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
