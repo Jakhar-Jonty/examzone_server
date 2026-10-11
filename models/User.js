@@ -84,10 +84,10 @@ const userSchema = new mongoose.Schema({
   // Basic Info
   phoneNumber: {
     type: String,
-    required: true,
+    required: false,
     unique: true,
+    sparse: true,
     trim: true,
-    index: true
   },
   name: {
     type: String,
@@ -99,7 +99,7 @@ const userSchema = new mongoose.Schema({
     trim: true,
     lowercase: true,
     sparse: true,
-    index: true
+    unique: true,
   },
   password: { type: String },
   googleId: { type: String, sparse: true, index: true },
@@ -241,8 +241,6 @@ const userSchema = new mongoose.Schema({
 });
 
 // Indexes
-userSchema.index({ phoneNumber: 1 });
-userSchema.index({ email: 1 });
 userSchema.index({ referralCode: 1 });
 userSchema.index({ 'examPreparations.category': 1 });
 userSchema.index({ subscriptionStatus: 1, subscriptionExpiry: 1 });

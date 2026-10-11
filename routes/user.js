@@ -12,6 +12,7 @@ import {
   saveQuestion,
   unsaveQuestion,
   getSavedQuestions,
+  batchGetSavedQuestions,
   updateSavedQuestion,
   checkSavedQuestions
 } from '../controllers/userController.js';
@@ -36,6 +37,7 @@ router.get('/subjects-topics', authenticate, getSubjectsAndTopics);
 router.post('/questions/save', authenticate, saveQuestion);
 router.delete('/questions/unsave/:questionId', authenticate, unsaveQuestion);
 router.get('/questions/saved', authenticate, getSavedQuestions);
+router.post('/questions/saved/batch', authenticate, batchGetSavedQuestions);
 router.put('/questions/saved/:savedQuestionId', authenticate, updateSavedQuestion);
 router.post('/questions/check-saved', authenticate, checkSavedQuestions);
 

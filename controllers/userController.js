@@ -1,3 +1,4 @@
+import mongoose from 'mongoose';
 import User from '../models/User.js';
 import ExamAttempt from '../models/ExamAttempt.js';
 import Exam from '../models/Exam.js';
@@ -6,6 +7,7 @@ import Question from '../models/Question.js';
 import SubjectTopic from '../models/SubjectTopic.js';
 import SavedQuestion from '../models/SavedQuestion.js';
 import Category from '../models/Category.js';
+import UserAnalytics from '../models/UserAnalytics.js';
 import cloudinary from '../config/cloudinary.js';
 
 export const getProfile = async (req, res) => {
@@ -558,8 +560,22 @@ export const getAllExams = async (req, res) => {
       sortBy = 'scheduledTime',
       sortOrder = 'desc',
       status = '',
-      minimal = 'false'
+      minimal = 'false',
+      attemptStatus = '',
+      premium = '',
+      difficulty = '',
+      includeHighlights = 'false',
     } = req.query;
+
+    const {
+      applyDifficultyFilter,
+      applyPremiumFilter,
+      applyAttemptStatusFilter,
+      resolveSortOptions,
+      fetchExamsSortedByUserScore,
+      buildExamHighlights,
+      enrichExamListForUser,
+    } = await import('../utils/examListQuery.js');
 
     // Use utility helper to get category IDs from examPreparations
     const { getCategoryIdsFromExamPreparations } = await import('../utils/examPrepHelper.js');
@@ -659,6 +675,10 @@ export const getAllExams = async (req, res) => {
       query.language = language;
     }
 
+    applyPremiumFilter(query, premium);
+    applyDifficultyFilter(query, difficulty);
+    await applyAttemptStatusFilter(query, attemptStatus, user._id);
+
     // Subject and Topic filter - filter exams by questions' subject/topic
     if (subject || topic) {
       const questionQuery = {};
@@ -683,30 +703,56 @@ export const getAllExams = async (req, res) => {
     }
 
     // Sort options
-    const sortOptions = {};
-    sortOptions[sortBy] = sortOrder === 'asc' ? 1 : -1;
+    const sortOptions = resolveSortOptions(sortBy, sortOrder);
+    const useScoreSort = sortBy === 'userScore' || sortBy === 'score';
+    const pageNum = parseInt(page);
+    const limitNum = parseInt(limit);
 
-    // Get total count
+    // Get total count (after attempt/premium/difficulty filters)
     const total = await Exam.countDocuments(query);
 
     // For minimal fields, only select what's needed
     let selectFields = '';
     if (minimal === 'true') {
-      selectFields = 'title duration totalMarks status scheduledTime expiresAt category subCategory tier';
+      selectFields =
+        'title duration totalMarks status scheduledTime expiresAt publishedAt category subCategory tier language difficultyDistribution averageRating reviewCount statistics isPremium accessType totalQuestions examType';
     } else {
       selectFields = '-questions'; // Exclude questions array to avoid loading
     }
 
-    const examQuery = Exam.find(query)
-      .populate('category', 'name code')
-      .populate('subCategory', 'name code')
-      .populate('tier', 'name code')
-      .select(selectFields)
-      .sort(sortOptions)
-      .limit(limit * 1)
-      .skip((page - 1) * limit);
+    let exams;
+    if (useScoreSort) {
+      const { examDocs } = await fetchExamsSortedByUserScore(
+        query,
+        user._id,
+        pageNum,
+        limitNum,
+        selectFields
+      );
+      const orderedIds = examDocs.map((e) => e._id);
+      const fetched = await Exam.find({ _id: { $in: orderedIds } })
+        .populate('category', 'name code displayName')
+        .populate('subCategory', 'name code displayName')
+        .populate('tier', 'name code')
+        .select(selectFields);
+      const orderMap = Object.fromEntries(
+        orderedIds.map((id, i) => [id.toString(), i])
+      );
+      exams = fetched.sort(
+        (a, b) => orderMap[a._id.toString()] - orderMap[b._id.toString()]
+      );
+    } else {
+      const examQuery = Exam.find(query)
+        .populate('category', 'name code displayName')
+        .populate('subCategory', 'name code displayName')
+        .populate('tier', 'name code')
+        .select(selectFields)
+        .sort(sortOptions || { scheduledTime: -1 })
+        .limit(limitNum)
+        .skip((pageNum - 1) * limitNum);
 
-    const exams = await examQuery;
+      exams = await examQuery;
+    }
 
     // Get question counts separately (more efficient)
     const examIds = exams.map(exam => exam._id);
@@ -719,44 +765,93 @@ export const getAllExams = async (req, res) => {
       questionCountMap[exam._id.toString()] = exam.questions?.length || 0;
     });
 
-    // Get attempt information for each exam
+    // Get attempt information for each exam (latest completed + paused state)
     const attempts = await ExamAttempt.find({
       user: user._id,
-      exam: { $in: examIds }
-    }).select('exam isCompleted isPaused _id');
+      exam: { $in: examIds },
+    }).select(
+      'exam isCompleted isPaused _id totalScore percentage endTime createdAt'
+    );
 
-    // Map attempts to exams
     const attemptMap = {};
-    attempts.forEach(attempt => {
-      attemptMap[attempt.exam.toString()] = {
-        attemptId: attempt._id,
-        isCompleted: attempt.isCompleted,
-        isPaused: attempt.isPaused
-      };
-    });
+    for (const attempt of attempts) {
+      const key = attempt.exam.toString();
+      if (!attemptMap[key]) {
+        attemptMap[key] = {
+          attemptId: null,
+          isCompleted: false,
+          isPaused: false,
+          lastScore: null,
+          lastPercentage: null,
+          lastAttemptAt: null,
+        };
+      }
+      const entry = attemptMap[key];
+      if (attempt.isCompleted) {
+        entry.isCompleted = true;
+        const at = new Date(attempt.endTime || attempt.createdAt || 0).getTime();
+        if (!entry.lastAttemptAt || at >= entry.lastAttemptAt) {
+          entry.lastAttemptAt = at;
+          entry.attemptId = attempt._id;
+          entry.lastScore = attempt.totalScore;
+          entry.lastPercentage = attempt.percentage;
+        }
+      } else if (attempt.isPaused) {
+        entry.isPaused = true;
+      }
+    }
+
+    // Live attempt stats for cards (rating, attempts, top score)
+    const { getAttemptStatsByExamIds, enrichExamWithStats } = await import(
+      '../utils/examListStats.js'
+    );
+    const attemptStatsMap = await getAttemptStatsByExamIds(examIds);
 
     // Add attempt info to exams and include question count
-    const examsWithAttempts = exams.map(exam => {
+    const examsWithAttempts = exams.map((exam) => {
       const attemptInfo = attemptMap[exam._id.toString()];
       const examObj = exam.toObject();
-      return {
-        ...examObj,
-        expiresAt: examObj.expiresAt || null, // Ensure expiresAt is explicitly set (null if not set)
-        questions: questionCountMap[exam._id.toString()] || 0, // Just the count
-        isAttempted: attemptInfo?.isCompleted || false,
-        isPaused: attemptInfo?.isPaused || false,
-        attemptId: attemptInfo?.attemptId || null
-      };
+      const enriched = enrichExamWithStats(
+        {
+          ...examObj,
+          expiresAt: examObj.expiresAt || null,
+          questions: questionCountMap[exam._id.toString()] || 0,
+          isAttempted: attemptInfo?.isCompleted || false,
+          isPaused: attemptInfo?.isPaused || false,
+          attemptId: attemptInfo?.attemptId || null,
+          lastScore: attemptInfo?.lastScore ?? null,
+          lastPercentage: attemptInfo?.lastPercentage ?? null,
+        },
+        attemptStatsMap
+      );
+      return enriched;
     });
+
+    let highlightsPayload = null;
+    if (includeHighlights === 'true') {
+      const raw = await buildExamHighlights(user._id, {
+        category: query.category,
+        scheduledTime: query.scheduledTime,
+        $or: query.$or,
+        deleted: query.deleted,
+        status: query.status,
+      });
+      highlightsPayload = {
+        newExams: await enrichExamListForUser(raw.newExams, user._id),
+        pausedExams: await enrichExamListForUser(raw.pausedExams, user._id),
+        recommendedExams: await enrichExamListForUser(raw.recommendedExams, user._id),
+      };
+    }
 
     res.json({
       exams: examsWithAttempts,
       pagination: {
-        currentPage: parseInt(page),
-        totalPages: Math.ceil(total / limit),
+        currentPage: pageNum,
+        totalPages: Math.ceil(total / limitNum),
         totalExams: total,
-        limit: parseInt(limit)
-      }
+        limit: limitNum,
+      },
+      ...(highlightsPayload ? { highlights: highlightsPayload } : {}),
     });
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -870,8 +965,78 @@ export const getAnalytics = async (req, res) => {
       ? ((secondHalfAvg - firstHalfAvg) / firstHalfAvg) * 100
       : 0;
 
+    // Weak-topic recommendations for "Start 15 Qs"
+    const userAnalytics = await UserAnalytics.findOne({ user }).lean();
+    let weakTopics = (userAnalytics?.topicWiseStats || [])
+      .filter((t) => t.topic && t.questionsAttempted >= 3 && (t.needsPractice || t.accuracy < 60))
+      .sort((a, b) => (a.accuracy ?? 0) - (b.accuracy ?? 0))
+      .slice(0, 5);
+
+    if (!weakTopics.length) {
+      const topicMap = {};
+      const recentAttempts = await ExamAttempt.find({
+        user,
+        isCompleted: true,
+        createdAt: { $gte: startDate },
+      })
+        .select('answers')
+        .sort({ createdAt: -1 })
+        .limit(15)
+        .populate({
+          path: 'answers.question',
+          select: 'subject topic',
+        })
+        .lean();
+
+      recentAttempts.forEach((attempt) => {
+        attempt.answers?.forEach((ans) => {
+          const q = ans.question;
+          if (!q?.topic) return;
+          const key = `${q.subject || ''}::${q.topic}`;
+          if (!topicMap[key]) {
+            topicMap[key] = { subject: q.subject || '', topic: q.topic, attempted: 0, correct: 0 };
+          }
+          if (ans.selectedAnswer) {
+            topicMap[key].attempted += 1;
+            if (ans.isCorrect) topicMap[key].correct += 1;
+          }
+        });
+      });
+
+      weakTopics = Object.values(topicMap)
+        .filter((t) => t.attempted >= 3)
+        .map((t) => ({
+          subject: t.subject,
+          topic: t.topic,
+          accuracy: (t.correct / t.attempted) * 100,
+          questionsAttempted: t.attempted,
+          needsPractice: true,
+        }))
+        .filter((t) => t.accuracy < 60)
+        .sort((a, b) => a.accuracy - b.accuracy)
+        .slice(0, 5);
+    }
+
+    const practiceRecommendations = weakTopics.map((t) => ({
+      subject: t.subject,
+      topic: t.topic,
+      accuracy: Number((t.accuracy ?? 0).toFixed(1)),
+      questionCount: 15,
+      sessionType: 'topic-wise',
+      filters: {
+        subject: t.subject || undefined,
+        topics: [t.topic],
+      },
+      label: `Start 15 Qs · ${t.topic}`,
+    }));
+
     res.json({
       stats: {
+        totalAttempts,
+        averageScore,
+        bestScore
+      },
+      overallStats: {
         totalAttempts,
         averageScore,
         bestScore
@@ -882,7 +1047,8 @@ export const getAnalytics = async (req, res) => {
         scoreChange,
         attemptsChange,
         improvementRate
-      }
+      },
+      practiceRecommendations,
     });
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -1030,71 +1196,206 @@ export const getSavedQuestions = async (req, res) => {
       topic = '',
       status = '',
       sortBy = 'savedAt',
-      sortOrder = 'desc'
+      sortOrder = 'desc',
+      source = '',
+      tag = '',
+      revisitOnly = ''
     } = req.query;
 
-    // Build query
-    const query = { user: userId };
+    const pageNum = Math.max(1, parseInt(page, 10) || 1);
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit, 10) || 20));
 
-    // Status filter
+    // ── SavedQuestion-level match ──
+    const savedMatch = { user: new mongoose.Types.ObjectId(userId) };
+
     if (status && ['needs-review', 'mastered', 'reviewed'].includes(status)) {
-      query.status = status;
+      savedMatch.status = status;
     }
 
-    // Get saved questions with pagination
-    const savedQuestions = await SavedQuestion.find(query)
-      .populate({
-        path: 'question',
-        select: 'questionText questionTextHindi options optionsHindi correctAnswer explanation explanationHindi marks questionImage language difficulty category subject topic'
-      })
-      .sort({ [sortBy]: sortOrder === 'asc' ? 1 : -1 })
-      .limit(limit * 1)
-      .skip((page - 1) * limit);
+    if (source === 'auto') {
+      savedMatch.$or = [{ source: 'auto' }, { tags: 'mistake' }];
+    } else if (source === 'manual') {
+      if (!savedMatch.$and) savedMatch.$and = [];
+      savedMatch.$and.push({
+        $or: [
+          { source: 'manual' },
+          { source: { $exists: false } },
+          { source: null },
+        ],
+      });
+    }
 
-    // Filter by category, subject, topic, and search
-    let filtered = savedQuestions.filter(sq => {
-      const q = sq.question;
-      if (!q) return false;
+    if (tag) savedMatch.tags = tag;
+    if (revisitOnly === 'true') savedMatch.wrongCount = { $gte: 2 };
 
-      // Category filter
-      if (category && q.category !== category) return false;
-
-      // Subject filter
-      if (subject && q.subject?.toLowerCase() !== subject.toLowerCase()) return false;
-
-      // Topic filter
-      if (topic && q.topic?.toLowerCase() !== topic.toLowerCase()) return false;
-
-      // Search filter
-      if (search) {
-        const searchLower = search.toLowerCase();
-        const matchesText = q.questionText?.toLowerCase().includes(searchLower) ||
-          q.questionTextHindi?.toLowerCase().includes(searchLower) ||
-          sq.notes?.toLowerCase().includes(searchLower);
-        if (!matchesText) return false;
+    // ── Stats (source-scoped, before question-level filters) ──
+    let stats = null;
+    if (source === 'auto' || req.query.includeStats === 'true') {
+      const base = { user: new mongoose.Types.ObjectId(userId) };
+      if (source === 'auto') base.$or = [{ source: 'auto' }, { tags: 'mistake' }];
+      else if (source === 'manual') {
+        base.$and = [{ $or: [{ source: 'manual' }, { source: { $exists: false } }, { source: null }] }];
       }
+      if (tag) base.tags = tag;
+      const [total, needsReview, revisit] = await Promise.all([
+        SavedQuestion.countDocuments(base),
+        SavedQuestion.countDocuments({ ...base, status: 'needs-review' }),
+        SavedQuestion.countDocuments({ ...base, wrongCount: { $gte: 2 } }),
+      ]);
+      stats = { total, needsReview, revisit };
+    }
 
-      return true;
-    });
+    // ── Question-level match (applied after $lookup) ──
+    const questionMatch = {};
+    if (category) {
+      questionMatch['question.category'] = mongoose.Types.ObjectId.isValid(category)
+        ? new mongoose.Types.ObjectId(category)
+        : category;
+    }
+    if (subject) {
+      questionMatch['question.subject'] = { $regex: new RegExp(`^${subject.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') };
+    }
+    if (topic) {
+      questionMatch['question.topic'] = { $regex: new RegExp(`^${topic.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') };
+    }
+    if (search) {
+      const escaped = search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const regex = { $regex: new RegExp(escaped, 'i') };
+      questionMatch.$or = [
+        { 'question.questionText': regex },
+        { 'question.questionTextHindi': regex },
+        { notes: regex },
+      ];
+    }
 
-    // Get total count (after filtering)
-    const total = await SavedQuestion.countDocuments({ user: userId });
+    const hasQuestionFilters = Object.keys(questionMatch).length > 0;
+
+    // ── Sort ──
+    const allowedSort = new Set(['savedAt', 'createdAt', 'updatedAt', 'status', 'wrongCount', 'lastWrongAt']);
+    const sortField = allowedSort.has(sortBy) ? sortBy : 'savedAt';
+    const sortDir = sortOrder === 'asc' ? 1 : -1;
+
+    const questionFields = {
+      questionText: 1, questionTextHindi: 1,
+      options: 1, optionsHindi: 1,
+      correctAnswer: 1, explanation: 1, explanationHindi: 1,
+      marks: 1, questionImage: 1, language: 1,
+      difficulty: 1, category: 1, subject: 1, topic: 1,
+    };
+
+    // ── Aggregation pipeline ──
+    const pipeline = [
+      { $match: savedMatch },
+      {
+        $lookup: {
+          from: 'questions',
+          localField: 'question',
+          foreignField: '_id',
+          as: 'question',
+          pipeline: [{ $project: questionFields }],
+        },
+      },
+      { $unwind: { path: '$question', preserveNullAndEmptyArrays: false } },
+    ];
+
+    if (hasQuestionFilters) {
+      pipeline.push({ $match: questionMatch });
+    }
+
+    // Count total matching before pagination
+    const countPipeline = [...pipeline, { $count: 'total' }];
+    const [countResult] = await SavedQuestion.aggregate(countPipeline);
+    const totalMatching = countResult?.total || 0;
+
+    // Sort + paginate
+    pipeline.push(
+      { $sort: { [sortField]: sortDir } },
+      { $skip: (pageNum - 1) * limitNum },
+      { $limit: limitNum },
+      {
+        $project: {
+          _id: 1, question: 1, savedAt: 1, notes: 1, tags: 1,
+          status: 1, source: 1, wrongCount: 1,
+          lastWrongAt: 1, lastWrongAnswer: 1,
+          subject: 1, topic: 1,
+        },
+      },
+    );
+
+    const results = await SavedQuestion.aggregate(pipeline);
 
     res.json({
-      savedQuestions: filtered.map(sq => ({
+      savedQuestions: results.map(sq => ({
         _id: sq._id,
         question: sq.question,
         savedAt: sq.savedAt,
         notes: sq.notes,
         tags: sq.tags,
-        status: sq.status
+        status: sq.status,
+        source: sq.source || 'manual',
+        wrongCount: sq.wrongCount || 0,
+        lastWrongAt: sq.lastWrongAt,
+        lastWrongAnswer: sq.lastWrongAnswer,
+        subject: sq.subject,
+        topic: sq.topic,
       })),
       pagination: {
-        currentPage: parseInt(page),
-        totalPages: Math.ceil(total / limit),
-        totalQuestions: total,
-        limit: parseInt(limit)
-      }
+        currentPage: pageNum,
+        totalPages: Math.max(1, Math.ceil(totalMatching / limitNum)),
+        totalQuestions: totalMatching,
+        limit: limitNum,
+      },
+      stats,
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// Batch fetch saved questions for PDF export (Wrong Book scope only)
+export const batchGetSavedQuestions = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const { ids } = req.body;
+
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({ message: 'ids array is required' });
+    }
+    if (ids.length > 100) {
+      return res.status(400).json({ message: 'Maximum 100 questions per export' });
+    }
+
+    const uniqueIds = [...new Set(ids.map(String))];
+
+    const savedQuestions = await SavedQuestion.find({
+      _id: { $in: uniqueIds },
+      user: userId,
+      $or: [{ source: 'auto' }, { tags: 'mistake' }],
+    })
+      .populate({
+        path: 'question',
+        select:
+          'questionText questionTextHindi options optionsHindi correctAnswer explanation explanationHindi subject topic difficulty',
+      })
+      .lean();
+
+    const byId = new Map(savedQuestions.map((sq) => [sq._id.toString(), sq]));
+    const ordered = uniqueIds.map((id) => byId.get(id)).filter(Boolean);
+
+    res.json({
+      savedQuestions: ordered.map((sq) => ({
+        _id: sq._id,
+        question: sq.question,
+        savedAt: sq.savedAt,
+        status: sq.status,
+        source: sq.source || 'auto',
+        wrongCount: sq.wrongCount || 0,
+        lastWrongAt: sq.lastWrongAt,
+        subject: sq.subject,
+        topic: sq.topic,
+      })),
+      requested: uniqueIds.length,
+      returned: ordered.length,
     });
   } catch (error) {
     res.status(500).json({ message: error.message });

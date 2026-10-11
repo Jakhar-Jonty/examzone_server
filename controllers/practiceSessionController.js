@@ -3,6 +3,7 @@ import PracticeSession from '../models/PracticeSession.js';
 import Question from '../models/Question.js';
 import ExamAttempt from '../models/ExamAttempt.js';
 import UserAnalytics from '../models/UserAnalytics.js';
+import SavedQuestion from '../models/SavedQuestion.js';
 
 const DIFFICULTY_GROUPS = {
   Easy: ['Easy', 'VeryEasy'],
@@ -235,10 +236,156 @@ export const createSession = async (req, res) => {
 
     if (!sessionType) return res.status(400).json({ message: 'sessionType is required' });
 
+    const count = Math.min(100, Math.max(5, parseInt(questionCount, 10) || 20));
+
+    if (sessionType === 'mistakes') {
+      const {
+        statuses,
+        includeMastered,
+        excludeMastered,
+        subject,
+        topic,
+        revisitOnly,
+        pickMode = 'random',
+      } = filters || {};
+
+      const savedQuery = {
+        user: req.user._id,
+        $or: [{ source: 'auto' }, { tags: 'mistake' }],
+      };
+
+      // Status: explicit list wins; else default exclude mastered unless includeMastered
+      if (Array.isArray(statuses) && statuses.length > 0) {
+        savedQuery.status = { $in: statuses };
+      } else if (includeMastered === true) {
+        // all statuses
+      } else if (excludeMastered !== false) {
+        savedQuery.status = { $ne: 'mastered' };
+      }
+
+      if (revisitOnly === true || revisitOnly === 'true') {
+        savedQuery.wrongCount = { $gte: 2 };
+      }
+
+      let saved = await SavedQuestion.find(savedQuery)
+        .select('question subject topic status wrongCount lastWrongAt')
+        .populate('question', 'subject topic')
+        .lean();
+
+      // Subject / topic via SavedQuestion fields or populated question
+      if (subject?.trim() || topic?.trim()) {
+        const subj = subject?.trim()?.toLowerCase();
+        const top = topic?.trim()?.toLowerCase();
+        saved = saved.filter((s) => {
+          const qSub = (s.subject || s.question?.subject || '').toLowerCase();
+          const qTop = (s.topic || s.question?.topic || '').toLowerCase();
+          if (subj && qSub !== subj) return false;
+          if (top && qTop !== top) return false;
+          return true;
+        });
+      }
+
+      saved = saved.filter((s) => s.question);
+
+      let ids = [...new Set(saved.map((s) => (s.question._id || s.question).toString()).filter(Boolean))];
+
+      // random (default) or priority by wrongCount
+      if (pickMode === 'priority') {
+        saved.sort((a, b) => (b.wrongCount || 0) - (a.wrongCount || 0));
+        ids = [...new Set(saved.map((s) => (s.question._id || s.question).toString()))];
+        ids = ids.slice(0, count);
+      } else {
+        ids = ids.sort(() => Math.random() - 0.5).slice(0, count);
+      }
+
+      if (!ids.length) {
+        return res.status(404).json({
+          message:
+            'No Wrong Book questions match these filters. Try including Mastered, clearing subject/topic, or Needs review only.',
+        });
+      }
+
+      const session = await PracticeSession.create({
+        user: req.user._id,
+        sessionType: 'mistakes',
+        filters,
+        questions: ids,
+        totalQuestions: ids.length,
+        startTime: new Date(),
+      });
+      return res.status(201).json({ session, matchedCount: saved.length });
+    }
+
+    if (sessionType === 'pyq') {
+      const { sourceExam, sourceYear, subject, topics, shift, paperSet } = filters || {};
+      const match = {
+        isPYQ: true,
+        status: { $nin: ['Archived', 'Flagged'] },
+      };
+      if (sourceExam?.trim()) {
+        match.sourceExam = { $regex: new RegExp(`^${escapeRegex(sourceExam.trim())}$`, 'i') };
+      }
+      if (sourceYear != null && sourceYear !== '') {
+        match.sourceYear = parseInt(sourceYear, 10);
+      }
+      const shiftVal = (shift || '').trim();
+      const paperSetVal = (paperSet || '').trim();
+      if (shiftVal) {
+        match.shift = { $regex: new RegExp(`^${escapeRegex(shiftVal)}$`, 'i') };
+      } else if (paperSetVal) {
+        match.paperSet = { $regex: new RegExp(`^${escapeRegex(paperSetVal)}$`, 'i') };
+      } else if (sourceYear != null && sourceYear !== '') {
+        // Full paper for untagged year: only questions without shift/paperSet
+        const emptyOrMissing = (field) => ({
+          $or: [{ [field]: null }, { [field]: '' }, { [field]: { $exists: false } }],
+        });
+        match.$and = [emptyOrMissing('shift'), emptyOrMissing('paperSet')];
+      }
+      if (subject?.trim()) {
+        match.subject = { $regex: new RegExp(`^${escapeRegex(subject.trim())}$`, 'i') };
+      }
+      if (topics?.length) {
+        const topicRegexes = topics.filter(Boolean).map((t) => ({
+          topic: { $regex: new RegExp(`^${escapeRegex(String(t).trim())}$`, 'i') },
+        }));
+        if (topicRegexes.length === 1) match.topic = topicRegexes[0].topic;
+        else if (topicRegexes.length > 1) match.$or = topicRegexes;
+      }
+
+      const total = await Question.countDocuments(match);
+      if (!total) {
+        return res.status(404).json({
+          message: 'No PYQ questions match these filters. Try another year, exam, or clear subject.',
+        });
+      }
+
+      const sampleSize = Math.min(count, total, 100);
+      const sampled = await Question.find(match)
+        .select('_id')
+        .sort({ subject: 1, topic: 1, createdAt: -1 })
+        .limit(sampleSize)
+        .lean();
+
+      if (!sampled.length) {
+        return res.status(404).json({
+          message: 'No PYQ questions match these filters. Try another year, exam, or clear subject.',
+        });
+      }
+
+      const session = await PracticeSession.create({
+        user: req.user._id,
+        sessionType: 'pyq',
+        filters,
+        questions: sampled.map((q) => q._id),
+        totalQuestions: sampled.length,
+        startTime: new Date(),
+      });
+      return res.status(201).json({ session });
+    }
+
     const query = await buildQuestionQuery(sessionType, filters, req.user._id);
     if (query.error) return res.status(400).json({ message: query.error });
 
-    const count = Math.min(100, Math.max(5, parseInt(questionCount, 10) || 20));
     const { questions } = await findQuestionsWithFallback(query, count);
 
     if (!questions.length) {

@@ -2,11 +2,30 @@ import Exam from '../models/Exam.js';
 import ExamAttempt from '../models/ExamAttempt.js';
 import Question from '../models/Question.js';
 import User from '../models/User.js';
+import { buildPeerStats } from '../utils/peerStats.js';
 
 const EXAM_QUESTION_FIELDS =
   'questionText questionTextHindi options optionsHindi translations correctAnswer explanation explanationHindi marks questionImage language difficulty category subject topic assertion reason';
 const EXAM_QUESTION_FIELDS_BASIC =
-  'questionText questionTextHindi options optionsHindi translations correctAnswer explanation explanationHindi marks questionImage language';
+  'questionText questionTextHindi options optionsHindi translations correctAnswer explanation explanationHindi marks questionImage language subject topic';
+const EXAM_QUESTION_FIELDS_OMR =
+  'questionText questionTextHindi options optionsHindi translations marks questionImage language difficulty subject topic assertion reason';
+
+function stripAnswerFields(question) {
+  const obj = question?.toObject ? question.toObject() : { ...question };
+  delete obj.correctAnswer;
+  delete obj.explanation;
+  delete obj.explanationHindi;
+  return obj;
+}
+
+function stripExamAnswers(examData) {
+  if (!examData?.questions?.length) return examData;
+  return {
+    ...examData,
+    questions: examData.questions.map(stripAnswerFields),
+  };
+}
 
 // Helper to check and reset weekly limit
 const checkWeeklyLimit = async (user) => {
@@ -36,10 +55,16 @@ export const getAvailableExams = async (req, res) => {
       ? { category: { $in: categoryIds } }
       : {}; // If no categories found, return empty
 
+    const validExamTypes = ['mock', 'practice', 'sectional', 'pyq', 'full-length', 'quiz', 'adaptive'];
+    const examTypeQuery = validExamTypes.includes(req.query.examType)
+      ? { examType: req.query.examType }
+      : {};
+
     // Get available exams - exams that have started and not expired
     // Account for IST timezone (UTC+5:30) - MongoDB stores in UTC
     const exams = await Exam.find({
       ...categoryQuery,
+      ...examTypeQuery,
       status: { $in: ['scheduled', 'active'] },
       scheduledTime: { $lte: now }, // Already started
       $or: [
@@ -180,8 +205,16 @@ export const getExamDetails = async (req, res) => {
     const maxAttempts = exam.maxAttempts || 3;
     const canReattempt = allowReattempts && attemptCount < maxAttempts;
 
+    const { getAttemptStatsByExamIds, enrichExamWithStats } = await import(
+      '../utils/examListStats.js'
+    );
+    const attemptStatsMap = await getAttemptStatsByExamIds([req.params.id]);
+    const examPayload =
+      typeof exam.toObject === 'function' ? exam.toObject() : exam;
+    const enrichedExam = enrichExamWithStats(examPayload, attemptStatsMap);
+
     res.json({
-      exam,
+      exam: enrichedExam,
       attemptStatus: {
         isCompleted: attemptCount > 0,
         isPaused: !!pausedAttempt,
@@ -211,6 +244,8 @@ export const getExamDetails = async (req, res) => {
 
 export const startExam = async (req, res) => {
   try {
+    const { mode = 'online' } = req.body || {};
+    const isOmrMode = mode === 'omr';
     const user = await User.findById(req.user._id);
     // Populate questions only when starting the exam
     const exam = await Exam.findOne({
@@ -228,6 +263,10 @@ export const startExam = async (req, res) => {
 
     if (!exam) {
       return res.status(404).json({ message: 'Exam not found or has been deleted' });
+    }
+
+    if (isOmrMode && !['omr', 'both'].includes(exam.deliveryMode || 'online')) {
+      return res.status(400).json({ message: 'OMR mode is not available for this exam' });
     }
 
     // Check re-attempt logic
@@ -375,6 +414,7 @@ export const startExam = async (req, res) => {
         startTime: new Date(),
         attemptNumber: nextAttemptNumber,
         attemptType: 'full',
+        attemptMode: isOmrMode ? 'omr' : 'online',
         totalQuestions: questionsToUse.length,
         maxScore: exam.totalMarks || questionsToUse.length // fallback: 1 mark per question
       });
@@ -415,16 +455,20 @@ export const startExam = async (req, res) => {
 
     // Return exam with populated questions and sections/timePerQuestion so frontend doesn't need to call getExamDetails again
     const examData = exam.toObject();
+    const responseExam = {
+      ...examData,
+      sections: exam.sections || [],
+      timePerQuestion: exam.timePerQuestion || null,
+      randomizeQuestions: exam.randomizeQuestions || false,
+    };
+    if (isOmrMode || attempt.attemptMode === 'omr') {
+      responseExam.questions = (responseExam.questions || []).map(stripAnswerFields);
+    }
     res.json({
       attempt,
-      exam: {
-        ...examData,
-        sections: exam.sections || [],
-        timePerQuestion: exam.timePerQuestion || null,
-        randomizeQuestions: exam.randomizeQuestions || false
-      },
-      exam, // Include exam with populated questions
-      isResumed: attempt.isPaused === false && attempt.lastResumedAt
+      exam: responseExam,
+      isResumed: attempt.isPaused === false && attempt.lastResumedAt,
+      attemptMode: attempt.attemptMode || 'online',
     });
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -629,6 +673,15 @@ export const submitExam = async (req, res) => {
 
     await attempt.save();
 
+    // Auto-sync wrong answers to mistake notebook
+    let mistakeNotebook = { added: 0, updated: 0, total: 0 };
+    try {
+      const { syncMistakeNotebook } = await import('../utils/mistakeNotebook.js');
+      mistakeNotebook = await syncMistakeNotebook(attempt.user, attempt);
+    } catch (mistakeErr) {
+      console.error('mistakeNotebook sync failed:', mistakeErr.message);
+    }
+
     // Update study streak
     const { updateStudyStreak } = await import('../utils/streakManager.js');
     const streakUpdate = await updateStudyStreak(attempt.user);
@@ -650,7 +703,8 @@ export const submitExam = async (req, res) => {
         timeTaken
       },
       streak: streakUpdate,
-      rewards
+      rewards,
+      mistakeNotebook
     });
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -700,7 +754,7 @@ export const getResult = async (req, res) => {
     const attempt = await ExamAttempt.findById(req.params.attemptId)
       .populate({
         path: 'exam',
-        select: 'title duration totalMarks category subCategory language isPremium accessType averageRating reviewCount',
+        select: 'title duration totalMarks category subCategory language isPremium accessType averageRating reviewCount sections marksPerQuestion',
         populate: [
           { path: 'category', select: 'name' },
           { path: 'subCategory', select: 'name' },
@@ -708,7 +762,7 @@ export const getResult = async (req, res) => {
       })
       .populate({
         path: 'answers.question',
-        select: EXAM_QUESTION_FIELDS_BASIC
+        select: EXAM_QUESTION_FIELDS
       });
 
     if (!attempt) {
@@ -730,9 +784,17 @@ export const getResult = async (req, res) => {
       .sort({ attemptNumber: -1 })
       .lean();
 
+    let peerStats = null;
+    try {
+      peerStats = await buildPeerStats(attempt);
+    } catch (peerErr) {
+      console.error('peerStats failed:', peerErr.message);
+    }
+
     res.json({
       result: attempt,
-      previousAttempts: previousAttempts || []
+      previousAttempts: previousAttempts || [],
+      peerStats,
     });
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -741,6 +803,33 @@ export const getResult = async (req, res) => {
 
 // GET /api/exams/active-attempt
 // Most recent in-progress (not completed) attempt, for the Home "Resume" card.
+// GET /api/exams/:id/omr-paper — printable question paper (no answers)
+export const getOmrPaper = async (req, res) => {
+  try {
+    const exam = await Exam.findOne({
+      _id: req.params.id,
+      $or: [{ deleted: false }, { deleted: { $exists: false } }],
+    })
+      .populate({
+        path: 'questions',
+        select: EXAM_QUESTION_FIELDS_OMR,
+      })
+      .select('title duration totalMarks language sections deliveryMode instructions');
+
+    if (!exam) {
+      return res.status(404).json({ message: 'Exam not found or has been deleted' });
+    }
+
+    if (!['omr', 'both'].includes(exam.deliveryMode || 'online')) {
+      return res.status(400).json({ message: 'OMR mode is not available for this exam' });
+    }
+
+    res.json({ exam: exam.toObject() });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
 export const getActiveAttempt = async (req, res) => {
   try {
     // Scan recent incomplete attempts and return the first whose exam still

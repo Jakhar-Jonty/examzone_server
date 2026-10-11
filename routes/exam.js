@@ -8,13 +8,15 @@ import {
   submitExam,
   pauseExam,
   getResult,
-  getActiveAttempt
+  getActiveAttempt,
+  getOmrPaper
 } from '../controllers/examController.js';
 
 const router = express.Router();
 
 router.get('/available', authenticate, getAvailableExams);
 router.get('/active-attempt', authenticate, getActiveAttempt);
+router.get('/:id/omr-paper', authenticate, getOmrPaper);
 router.get('/:id', authenticate, getExamDetails);
 router.post('/:id/start', authenticate, startExam);
 router.put('/attempt/:attemptId', authenticate, saveAnswers);

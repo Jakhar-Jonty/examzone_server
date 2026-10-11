@@ -60,6 +60,11 @@ const examAttemptSchema = new mongoose.Schema({
     enum: ['full', 'practice', 'review', 'adaptive', 'weak-areas'],
     default: 'full'
   },
+  attemptMode: {
+    type: String,
+    enum: ['online', 'omr'],
+    default: 'online',
+  },
   
   // Detailed Answer Tracking
   answers: [{

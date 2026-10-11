@@ -9,7 +9,7 @@ const practiceSessionSchema = new mongoose.Schema({
   // Session Type
   sessionType: {
     type: String,
-    enum: ['topic-wise', 'subject-wise', 'difficulty-based', 'weak-areas', 'random', 'custom'],
+    enum: ['topic-wise', 'subject-wise', 'difficulty-based', 'weak-areas', 'random', 'custom', 'mistakes', 'pyq'],
     required: true
   },
   
@@ -21,7 +21,11 @@ const practiceSessionSchema = new mongoose.Schema({
     topics: [{ type: String }],
     difficulty: [{ type: String, enum: ['Easy', 'Medium', 'Hard'] }],
     questionTypes: [{ type: String }],
-    isPYQ: { type: Boolean }
+    isPYQ: { type: Boolean },
+    sourceExam: { type: String },
+    sourceYear: { type: Number },
+    shift: { type: String },
+    paperSet: { type: String },
   },
   
   // Questions

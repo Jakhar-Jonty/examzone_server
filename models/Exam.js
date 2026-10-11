@@ -243,6 +243,11 @@ const examSchema = new mongoose.Schema({
   showResultsImmediately: { type: Boolean, default: true },
   showCorrectAnswers: { type: Boolean, default: true },
   allowQuestionReview: { type: Boolean, default: true },
+  deliveryMode: {
+    type: String,
+    enum: ['online', 'omr', 'both'],
+    default: 'online',
+  },
   
   // Proctoring
   enableProctoring: { type: Boolean, default: false },
