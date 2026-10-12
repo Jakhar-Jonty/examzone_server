@@ -86,6 +86,7 @@ const notificationSchema = new mongoose.Schema({
 });
 
 notificationSchema.index({ user: 1, isRead: 1, createdAt: -1 });
+notificationSchema.index({ groupKey: 1, user: 1 }); // reminder dedupe ("sent today?")
 notificationSchema.index({ scheduledFor: 1 });
 notificationSchema.index({ expiresAt: 1 });
 

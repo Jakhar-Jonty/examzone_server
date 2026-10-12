@@ -5,6 +5,7 @@ import dotenv from 'dotenv';
 import { Server } from 'socket.io';
 import connectDB from './config/db.js';
 import { setIo } from './utils/socket.js';
+import { startScheduler } from './utils/scheduler.js';
 import authRoutes from './routes/auth.js';
 import userRoutes from './routes/user.js';
 import examRoutes from './routes/exam.js';
@@ -110,6 +111,7 @@ if (!isServerless) {
       await connectDB();
       httpServer.listen(PORT, '0.0.0.0', () => {
         console.log(`Server running on port ${PORT}`);
+        startScheduler(); // push reminders (long-lived server only, not serverless)
       });
     } catch (error) {
       console.error('Server startup failed:', error.message);
