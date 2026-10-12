@@ -193,7 +193,8 @@ export const getExamHistory = async (req, res) => {
       .select('_id totalScore percentage correctAnswers incorrectAnswers unattempted timeTaken attemptNumber endTime createdAt exam')
       .populate({
         path: 'exam',
-        select: 'title category scheduledTime totalMarks'
+        select: 'title category scheduledTime totalMarks',
+        populate: { path: 'category', select: 'name' },
       })
       .sort(sortOptions)
       .limit(parseInt(limit))
@@ -930,7 +931,11 @@ export const getAnalytics = async (req, res) => {
       isCompleted: true,
       createdAt: { $gte: startDate }
     })
-      .populate('exam', 'title category totalMarks')
+      .populate({
+        path: 'exam',
+        select: 'title category totalMarks',
+        populate: { path: 'category', select: 'name' },
+      })
       .sort({ createdAt: -1 });
 
     // Overall stats
@@ -945,7 +950,8 @@ export const getAnalytics = async (req, res) => {
     // Subject-wise performance (group by category since exams don't have subject field)
     const subjectMap = {};
     allAttempts.forEach(attempt => {
-      const subject = attempt.exam?.category || 'General';
+      // Group by category name (exams have no subject field); never expose raw ids
+      const subject = attempt.exam?.category?.name || 'General';
       if (!subjectMap[subject]) {
         subjectMap[subject] = {
           subject,
