@@ -21,6 +21,7 @@ import reviewRoutes from './routes/review.js';
 import studyPlanRoutes from './routes/studyPlan.js';
 import practiceSessionRoutes from './routes/practiceSession.js';
 import pyqRoutes from './routes/pyq.js';
+import haryanaGkRoutes from './routes/haryanaGk.js';
 
 dotenv.config();
 
@@ -65,6 +66,7 @@ app.use('/api/reviews', reviewRoutes);
 app.use('/api/study-plans', studyPlanRoutes);
 app.use('/api/practice-sessions', practiceSessionRoutes);
 app.use('/api/pyq', pyqRoutes);
+app.use('/api/haryana-gk', haryanaGkRoutes);
 
 app.get('/api/health', (req, res) => {
   res.json({

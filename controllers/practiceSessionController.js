@@ -405,7 +405,10 @@ export const createSession = async (req, res) => {
     const query = await buildQuestionQuery(sessionType, filters, req.user._id);
     if (query.error) return res.status(400).json({ message: query.error });
 
-    const { questions } = await findQuestionsWithFallback(query, count);
+    // strict: never widen the filters (hub topic tests must stay on-topic)
+    const questions = req.body.strict === true
+      ? await sampleQuestionIds(query, count)
+      : (await findQuestionsWithFallback(query, count)).questions;
 
     if (!questions.length) {
       const totalInDb = await Question.countDocuments({
