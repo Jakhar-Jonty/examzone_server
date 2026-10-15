@@ -17,7 +17,15 @@ export const LIVE_MOCK = {
   windowMinutes: 120, // ranked if submitted within 2 hours of the start
   duration: 40, // minutes
   // HSSC CET-style mix; Haryana GK is the differentiator
-  mix: { [HARYANA_GK_SUBJECT]: 16, Maths: 8, Reasoning: 8, 'General Knowledge': 4, 'Computer Science': 4 },
+  mix: {
+    [HARYANA_GK_SUBJECT]: 12,
+    'General Knowledge': 4,
+    Maths: 6,
+    Reasoning: 7,
+    Hindi: 4,
+    English: 4,
+    'Computer Science': 3,
+  },
   avoidRecentMocks: 4, // don't reuse questions from the last N live mocks
 };
 
@@ -40,7 +48,7 @@ export const liveState = (exam, now = new Date()) => {
   return 'ended';
 };
 
-const pickQuestions = async (focus) => {
+export const pickQuestions = async (focus) => {
   const recent = await Exam.find({ isLiveMock: true }).sort({ scheduledTime: -1 }).limit(LIVE_MOCK.avoidRecentMocks).select('questions').lean();
   const used = recent.flatMap((e) => e.questions || []);
   const base = {
