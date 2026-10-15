@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
+import { getFocus } from '../utils/focus.js';
 
 // const userSchema = new mongoose.Schema({
 //   phoneNumber: { 
@@ -291,6 +292,14 @@ userSchema.methods.comparePassword = async function (candidatePassword) {
   return await bcrypt.compare(candidatePassword, this.password);
 };
 
+
+// Focus mode: new students prepare for the focus exam without having to pick it
+userSchema.pre('save', async function (next) {
+  if (!this.isNew || this.role === 'admin' || this.examPreparations?.length) return next();
+  const focus = await getFocus();
+  if (focus) this.examPreparations = [{ category: focus.id }];
+  next();
+});
 
 export default mongoose.model('User', userSchema);
 

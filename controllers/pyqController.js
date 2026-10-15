@@ -1,4 +1,5 @@
 import Question from '../models/Question.js';
+import { getFocus, focusFilter } from '../utils/focus.js';
 import Exam from '../models/Exam.js';
 import User from '../models/User.js';
 
@@ -38,8 +39,9 @@ const paperLabel = (sourceExam, year, shiftKey) => {
 
 export const getPyqMeta = async (req, res) => {
   try {
+    const focus = await getFocus();
     const rows = await Question.aggregate([
-      { $match: { isPYQ: true, status: PYQ_STATUS } },
+      { $match: { isPYQ: true, status: PYQ_STATUS, ...focusFilter(focus) } },
       {
         $group: {
           _id: { sourceExam: '$sourceExam', year: '$sourceYear' },
@@ -79,6 +81,7 @@ export const getPyqPapers = async (req, res) => {
     }
 
     const examRegex = new RegExp(`^${escapeRegex(sourceExam)}$`, 'i');
+    const focus = await getFocus();
     const rows = await Question.aggregate([
       {
         $match: {
@@ -86,6 +89,7 @@ export const getPyqPapers = async (req, res) => {
           status: PYQ_STATUS,
           sourceExam: { $regex: examRegex },
           sourceYear: { $ne: null },
+          ...focusFilter(focus),
         },
       },
       {
@@ -196,6 +200,7 @@ export const getPyqQuestions = async (req, res) => {
       status: PYQ_STATUS,
       sourceExam: { $regex: new RegExp(`^${escapeRegex(sourceExam)}$`, 'i') },
       sourceYear: year,
+      ...focusFilter(await getFocus()),
     };
     applyPyqPaperShiftFilter(match, shift, paperSet);
     if (subject) {

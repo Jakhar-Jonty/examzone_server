@@ -1,4 +1,5 @@
 import Category from '../models/Category.js';
+import { getFocus } from './focus.js';
 import mongoose from 'mongoose';
 
 /**
@@ -13,6 +14,10 @@ import mongoose from 'mongoose';
  * @returns {Promise<Array>} - Array of category ObjectIds
  */
 export const getCategoryIdsFromExamPreparations = async (examPreparations) => {
+    // Focus mode: every student sees the focus exam family, whatever they picked before
+    const focus = await getFocus();
+    if (focus) return focus.ids;
+
     if (!examPreparations || examPreparations.length === 0) {
         return [];
     }

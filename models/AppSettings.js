@@ -1,7 +1,7 @@
 import mongoose from "mongoose";
 const appSettingsSchema = new mongoose.Schema({
   key: { type: String, required: true, unique: true },
-  value: { type: mongoose.Schema.Mixed, required: true },
+  value: { type: mongoose.Schema.Types.Mixed },
   description: { type: String },
   category: {
     type: String,
@@ -18,7 +18,6 @@ const appSettingsSchema = new mongoose.Schema({
   updatedAt: { type: Date, default: Date.now }
 });
 
-appSettingsSchema.index({ key: 1 });
 appSettingsSchema.index({ category: 1 });
 
 export default mongoose.model("AppSettings", appSettingsSchema);

@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { getFocus } from '../utils/focus.js';
 import User from '../models/User.js';
 import ExamAttempt from '../models/ExamAttempt.js';
 import Exam from '../models/Exam.js';
@@ -551,9 +552,17 @@ export const getDashboardStats = async (req, res) => {
         isPrimary: !!ep.isPrimary,
       }))
       .sort((a, b) => Number(b.isPrimary) - Number(a.isPrimary));
+    // Focus mode: the target is always the focus exam (keep the student's sub-exam if it belongs to it)
+    const focus = await getFocus();
+    const focusTargets = focus
+      ? (() => {
+          const own = targetExams.filter((t) => String(t.category) === String(focus.id));
+          return own.length ? own : [{ category: focus.id, subCategory: null, name: focus.name, isPrimary: true }];
+        })()
+      : null;
 
     res.json({
-      targetExams,
+      targetExams: focusTargets || targetExams,
       upcomingExams,
       dailyQuiz: dailyQuizSession
         ? {
@@ -1135,6 +1144,15 @@ export const getSubjectsAndTopics = async (req, res) => {
           return res.json({ subjectsAndTopics: [] });
         }
       }
+    }
+
+    // Focus mode: only subjects/topics of the focus exam family
+    const focus = await getFocus();
+    if (focus) {
+      if (query.category && !focus.ids.some((id) => String(id) === String(query.category))) {
+        return res.json({ subjectsAndTopics: [] });
+      }
+      if (!query.category) query.category = { $in: focus.ids };
     }
 
     const subjectTopics = await SubjectTopic.find(query)

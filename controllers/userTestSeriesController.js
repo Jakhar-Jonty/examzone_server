@@ -1,4 +1,5 @@
 import TestSeries from '../models/TestSeries.js';
+import { getFocus, focusFilter } from '../utils/focus.js';
 import TestSeriesEnrollment from '../models/TestSeriesEnrollment.js';
 import ExamAttempt from '../models/ExamAttempt.js';
 
@@ -56,6 +57,9 @@ export const getPublishedSeries = async (req, res) => {
     const { category, search, page = 1, limit = 20 } = req.query;
     const query = { status: 'published' };
     if (category) query.category = category;
+    // Focus mode: only series of the focus exam family
+    const focus = await getFocus();
+    if (focus) query.$and = [focusFilter(focus)];
     if (search) query.title = new RegExp(search, 'i');
 
     const [series, total] = await Promise.all([

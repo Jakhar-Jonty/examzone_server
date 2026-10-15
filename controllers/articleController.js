@@ -1,4 +1,5 @@
 import Article from '../models/Article.js';
+import { getFocus } from '../utils/focus.js';
 import User from '../models/User.js';
 import https from 'https';
 import http from 'http';
@@ -182,6 +183,9 @@ export const getArticles = async (req, res) => {
     const query = { status: 'published' };
 
     if (category) query.category = category;
+    // Focus mode: articles are tagged by category name ("HSSC")
+    const focus = await getFocus();
+    if (focus) query.category = focus.name;
     if (subject) query.subjects = { $in: [subject] };
     if (search) {
       query.$or = [
@@ -272,8 +276,10 @@ export const searchArticles = async (req, res) => {
       return res.status(400).json({ message: 'Search query is required' });
     }
 
+    const focus = await getFocus();
     const articles = await Article.find({
       status: 'published',
+      ...(focus ? { category: focus.name } : {}),
       $or: [
         { title: { $regex: q, $options: 'i' } },
         { content: { $regex: q, $options: 'i' } },

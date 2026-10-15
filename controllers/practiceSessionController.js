@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { getFocus, focusFilter } from '../utils/focus.js';
 import PracticeSession from '../models/PracticeSession.js';
 import Question from '../models/Question.js';
 import ExamAttempt from '../models/ExamAttempt.js';
@@ -20,6 +21,12 @@ const DIFFICULTY_GROUPS = {
 
 function escapeRegex(str) {
   return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/** Focus mode: keep a question query inside the focus exam family. */
+function withFocus(query, focus) {
+  if (focus) query.$and = [...(query.$and || []), focusFilter(focus)];
+  return query;
 }
 
 function castCategoryId(category) {
@@ -242,6 +249,7 @@ export const createSession = async (req, res) => {
     const { sessionType, filters = {}, questionCount = 20 } = req.body;
 
     if (!sessionType) return res.status(400).json({ message: 'sessionType is required' });
+    const focus = await getFocus();
 
     // One daily quiz per IST day: return today's session instead of making another.
     if (sessionType === 'daily-quiz') {
@@ -371,6 +379,7 @@ export const createSession = async (req, res) => {
         else if (topicRegexes.length > 1) match.$or = topicRegexes;
       }
 
+      withFocus(match, focus);
       const total = await Question.countDocuments(match);
       if (!total) {
         return res.status(404).json({
@@ -404,6 +413,7 @@ export const createSession = async (req, res) => {
 
     const query = await buildQuestionQuery(sessionType, filters, req.user._id);
     if (query.error) return res.status(400).json({ message: query.error });
+    withFocus(query, focus); // in $and so the fallback's widening never leaves the focus
 
     // strict: never widen the filters (hub topic tests must stay on-topic)
     const questions = req.body.strict === true
