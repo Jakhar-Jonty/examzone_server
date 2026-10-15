@@ -1,5 +1,12 @@
 import cron from 'node-cron';
-import { runDailyQuizReminders, runStreakReminders, runLiveTestReminders } from './reminders.js';
+import {
+  runDailyQuizReminders,
+  runStreakReminders,
+  runLiveTestReminders,
+  runLiveMockEveReminders,
+  runLiveMockResults,
+} from './reminders.js';
+import { ensureUpcomingLiveMock } from './liveMock.js';
 
 /**
  * Timed jobs. Runs only on the long-lived server (EC2 / PM2 with one
@@ -31,5 +38,20 @@ export const startScheduler = () => {
     noOverlap: true,
   });
 
-  console.log('[scheduler] reminders scheduled: daily quiz 8:00, streak 20:00, live tests every 5 min (IST)');
+  // Weekly All-Haryana live mock: create next Sunday's paper, remind the evening before, send results
+  cron.schedule('0 6 * * *', run('live-mock-create', async () => {
+    const { exam, created } = await ensureUpcomingLiveMock();
+    return { created, exam: exam?.title || null };
+  }), { timezone, name: 'live-mock-create', noOverlap: true });
+  cron.schedule('0 19 * * 6', run('live-mock-eve', runLiveMockEveReminders), { timezone, name: 'live-mock-eve', noOverlap: true });
+  cron.schedule('*/5 * * * *', run('live-mock-results', runLiveMockResults, { quiet: true }), {
+    timezone,
+    name: 'live-mock-results',
+    noOverlap: true,
+  });
+
+  console.log(
+    '[scheduler] scheduled (IST): daily quiz 8:00, streak 20:00, live tests every 5 min, ' +
+      'live mock create 6:00 daily, live mock eve Sat 19:00, live mock results every 5 min'
+  );
 };

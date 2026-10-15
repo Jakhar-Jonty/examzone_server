@@ -313,6 +313,11 @@ const examSchema = new mongoose.Schema({
   
   // Tags
   tags: [{ type: String }],
+
+  // Weekly All-Haryana live mock: ranked only for first attempts submitted before liveEndsAt
+  isLiveMock: { type: Boolean, default: false, index: true },
+  liveEndsAt: { type: Date },
+  liveResultsSentAt: { type: Date },
   
   // Soft Delete
   deleted: { type: Boolean, default: false, index: true },

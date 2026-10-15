@@ -25,6 +25,7 @@ import haryanaGkRoutes from './routes/haryanaGk.js';
 import currentAffairRoutes from './routes/currentAffair.js';
 import configRoutes from './routes/config.js';
 import questionReviewRoutes from './routes/questionReview.js';
+import liveMockRoutes from './routes/liveMock.js';
 
 dotenv.config();
 
@@ -73,6 +74,7 @@ app.use('/api/haryana-gk', haryanaGkRoutes);
 app.use('/api/current-affairs', currentAffairRoutes);
 app.use('/api/config', configRoutes);
 app.use('/api/question-review', questionReviewRoutes);
+app.use('/api/live-mock', liveMockRoutes);
 
 app.get('/api/health', (req, res) => {
   res.json({

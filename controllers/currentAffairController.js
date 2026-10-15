@@ -5,6 +5,7 @@ import Category from '../models/Category.js';
 import PracticeSession from '../models/PracticeSession.js';
 import { draftCurrentAffair, cleanQuestions } from '../utils/aiCurrentAffairs.js';
 import { istDateKey } from '../utils/istDay.js';
+import { notifyCurrentAffairsPublished } from '../utils/reminders.js';
 import { HARYANA_GK_SUBJECT } from '../utils/haryanaGk.js';
 
 const TOPIC = 'Current Affairs';
@@ -233,11 +234,17 @@ export const adminPublish = async (req, res) => {
     if (problems.length) return res.status(400).json({ message: problems.join(' '), problems });
 
     await syncQuestions(ca, linkedIds(ca), req.user._id);
+    const firstPublish = !ca.publishedAt;
     ca.status = 'published';
     ca.publishedAt = ca.publishedAt || new Date();
     ca.reviewedBy = req.user._id;
     await ca.save();
     res.json({ item: ca });
+
+    // notify students (once per day) — after responding so the admin isn't kept waiting
+    if (firstPublish && ca.date === istDateKey()) {
+      notifyCurrentAffairsPublished(ca).catch((err) => console.error('CA notify failed:', err.message));
+    }
   } catch (err) {
     sendError(res, err);
   }
