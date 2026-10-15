@@ -5,7 +5,7 @@ import { GoogleGenAI } from '@google/genai';
 let openai = null;
 let gemini = null;
 
-const getAIClient = () => {
+export const getAIClient = () => {
   const apiKey = process.env.GEMINI_API_KEY || process.env.OPENAI_API_KEY;
   if (!apiKey) {
     throw new Error('GEMINI_API_KEY or OPENAI_API_KEY environment variable is not set');

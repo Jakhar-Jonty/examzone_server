@@ -6,12 +6,14 @@
 //    "maths" …) into one canonical name, on Question and SavedQuestion.
 // 2. Haryana GK topics: map old ad-hoc topics onto the hub's topic list and
 //    tag questions that had no topic (reviewed list below).
+// 3. Category stored as a name string ("HSSC") instead of an id → the id.
 import dotenv from 'dotenv';
 import mongoose from 'mongoose';
 import connectDB from '../config/db.js';
 import Question from '../models/Question.js';
+import Category from '../models/Category.js';
 import SavedQuestion from '../models/SavedQuestion.js';
-import { HARYANA_GK_SUBJECT } from '../utils/haryanaGk.js';
+import { HARYANA_GK_SUBJECT, HARYANA_GK_TOPICS } from '../utils/haryanaGk.js';
 
 dotenv.config();
 const APPLY = process.argv.includes('--apply');
@@ -108,7 +110,7 @@ const run = async () => {
     if (!current) target = UNTAGGED_TOPICS[String(q._id)] || null;
     else if (TOPIC_MAP[current.toLowerCase()]) target = TOPIC_MAP[current.toLowerCase()];
     if (!target) {
-      if (current && !Object.values(TOPIC_MAP).includes(current)) unknown.add(current);
+      if (current && !HARYANA_GK_TOPICS.some((t) => t.label === current)) unknown.add(current);
       continue;
     }
     if (target === current) continue;
@@ -120,6 +122,20 @@ const run = async () => {
   }
   console.log(`  Haryana GK: ${mapped} topics remapped, ${tagged} untagged questions tagged`);
   if (unknown.size) console.log('  Unmapped existing topics (left as is):', [...unknown]);
+
+  // 3. Categories saved as names (raw collection: Mongoose would try to cast them)
+  const questions = mongoose.connection.db.collection('questions');
+  const named = await questions.distinct('category', { category: { $type: 'string' } });
+  for (const name of named) {
+    const cat = await Category.findOne({ name: new RegExp(`^${name.trim()}$`, 'i'), parentCategory: null }).select('_id').lean();
+    const n = await questions.countDocuments({ category: name });
+    if (!cat) {
+      console.log(`  category ${JSON.stringify(name)}: no matching category, left as is (${n})`);
+      continue;
+    }
+    console.log(`  category ${JSON.stringify(name)} → ${cat._id} (${n})`);
+    if (APPLY) await questions.updateMany({ category: name }, { $set: { category: cat._id } });
+  }
 
   await mongoose.disconnect();
 };
