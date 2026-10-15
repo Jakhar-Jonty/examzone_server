@@ -8,6 +8,7 @@ import Question from '../models/Question.js';
 import User from '../models/User.js';
 import { getFocus } from './focus.js';
 import { visibleStatus } from './questionVisibility.js';
+import { syncLiveMockSeries } from './liveMockSeries.js';
 import { HARYANA_GK_SUBJECT } from './haryanaGk.js';
 
 const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
@@ -107,6 +108,7 @@ export const ensureUpcomingLiveMock = async ({ now = new Date() } = {}) => {
     tags: ['live-mock'],
     createdBy: admin?._id,
   });
+  await syncLiveMockSeries().catch((err) => console.error('live mock series sync failed:', err.message));
   return { exam, created: true };
 };
 
