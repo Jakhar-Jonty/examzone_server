@@ -24,6 +24,7 @@ import pyqRoutes from './routes/pyq.js';
 import haryanaGkRoutes from './routes/haryanaGk.js';
 import currentAffairRoutes from './routes/currentAffair.js';
 import configRoutes from './routes/config.js';
+import questionReviewRoutes from './routes/questionReview.js';
 
 dotenv.config();
 
@@ -71,6 +72,7 @@ app.use('/api/pyq', pyqRoutes);
 app.use('/api/haryana-gk', haryanaGkRoutes);
 app.use('/api/current-affairs', currentAffairRoutes);
 app.use('/api/config', configRoutes);
+app.use('/api/question-review', questionReviewRoutes);
 
 app.get('/api/health', (req, res) => {
   res.json({

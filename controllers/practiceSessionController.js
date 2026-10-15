@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { visibleStatus } from '../utils/questionVisibility.js';
 import { getFocus, focusFilter } from '../utils/focus.js';
 import PracticeSession from '../models/PracticeSession.js';
 import Question from '../models/Question.js';
@@ -69,7 +70,7 @@ function buildMatchQuery(filters = {}) {
   if (filters.isPYQ !== undefined) query.isPYQ = filters.isPYQ;
 
   // Exclude only clearly unusable questions
-  query.status = { $nin: ['Archived', 'Flagged'] };
+  query.status = visibleStatus();
 
   return query;
 }
@@ -93,7 +94,7 @@ async function findQuestionsWithFallback(baseQuery, count) {
     (() => { const q = { ...baseQuery }; delete q.topic; delete q.$or; return q; })(),
     (() => { const q = { ...baseQuery }; delete q.topic; delete q.$or; delete q.subject; return q; })(),
     (() => { const q = { ...baseQuery }; delete q.topic; delete q.$or; delete q.subject; delete q.category; return q; })(),
-    { status: { $nin: ['Archived', 'Flagged'] } },
+    { status: visibleStatus() },
   ];
 
   const seen = new Set();
@@ -188,7 +189,7 @@ async function buildWeakAreasQuery(userId, filters = {}) {
     }
   }
 
-  query.status = { $nin: ['Archived', 'Flagged'] };
+  query.status = visibleStatus();
   return query;
 }
 
@@ -347,7 +348,7 @@ export const createSession = async (req, res) => {
       const { sourceExam, sourceYear, subject, topics, shift, paperSet } = filters || {};
       const match = {
         isPYQ: true,
-        status: { $nin: ['Archived', 'Flagged'] },
+        status: visibleStatus(),
       };
       if (sourceExam?.trim()) {
         match.sourceExam = { $regex: new RegExp(`^${escapeRegex(sourceExam.trim())}$`, 'i') };
@@ -422,7 +423,7 @@ export const createSession = async (req, res) => {
 
     if (!questions.length) {
       const totalInDb = await Question.countDocuments({
-        status: { $nin: ['Archived', 'Flagged'] },
+        status: visibleStatus(),
       });
       return res.status(404).json({
         message: totalInDb === 0

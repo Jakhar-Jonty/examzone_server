@@ -4,6 +4,8 @@ const DIFFICULTIES = ['Easy', 'Medium', 'Hard'];
 const str = (v) => (typeof v === 'string' ? v.trim() : '');
 
 // Models sometimes swap the English and Hindi fields; put each in its place.
+export const parseModelJson = (raw) => JSON.parse(String(raw).replace(/```json\n?/g, '').replace(/```\n?/g, '').trim());
+
 const isHindi = (text) => (text.match(/[\u0900-\u097F]/g) || []).length > text.replace(/\s/g, '').length / 3;
 const pair = (en, hi) => (isHindi(en) && hi && !isHindi(hi) ? [hi, en] : [en, hi]);
 
@@ -47,13 +49,13 @@ NEWS:
 ${sourceText}
 """`;
 
-const callModel = async (prompt) => {
+export const callModel = async (prompt, { geminiModel = 'gemini-2.5-flash', maxOutputTokens = 8192 } = {}) => {
   const { type, client } = getAIClient();
   if (type === 'gemini') {
     const response = await client.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: geminiModel,
       contents: prompt,
-      config: { temperature: 0.4, maxOutputTokens: 8192, responseMimeType: 'application/json' },
+      config: { temperature: 0.4, maxOutputTokens, responseMimeType: 'application/json' },
     });
     if (typeof response.text === 'string') return response.text;
     return response.candidates?.[0]?.content?.parts?.find((p) => p.text)?.text || '';

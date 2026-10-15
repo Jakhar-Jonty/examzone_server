@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { visibleStatus } from '../utils/questionVisibility.js';
 import Question from '../models/Question.js';
 import Exam from '../models/Exam.js';
 import User from '../models/User.js';
@@ -509,7 +510,7 @@ export const saveAIGuestions = async (req, res) => {
         questionType: q.questionType || 'MCQ',
         isAIGenerated: true,
         humanVerified: false,
-        status: 'Draft',
+        status: 'UnderReview', // students see it only after approval in the review queue
         // New schema: translations array
         translations: Array.isArray(q.translations) ? q.translations : [],
         // Optional metadata (set by AI, admin can edit later)
@@ -604,6 +605,7 @@ export const createExam = async (req, res) => {
         ];
       }
 
+      query.status = visibleStatus(); // never auto-pick questions still under review
       const availableQuestions = await Question.find(query);
       const shuffled = availableQuestions.sort(() => 0.5 - Math.random());
       selectedQuestions = shuffled.slice(0, questionCount || 50).map(q => q._id);

@@ -1,9 +1,10 @@
 import Question from '../models/Question.js';
+import { visibleStatus } from '../utils/questionVisibility.js';
 import { getFocus, focusFilter } from '../utils/focus.js';
 import Exam from '../models/Exam.js';
 import User from '../models/User.js';
 
-const PYQ_STATUS = { $nin: ['Archived', 'Flagged'] };
+const PYQ_STATUS = visibleStatus();
 
 const escapeRegex = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 

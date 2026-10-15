@@ -1,9 +1,10 @@
 import Question from '../models/Question.js';
+import { visibleStatus } from '../utils/questionVisibility.js';
 import ExamAttempt from '../models/ExamAttempt.js';
 import PracticeSession from '../models/PracticeSession.js';
 import { HARYANA_GK_SUBJECT, HARYANA_GK_TOPICS } from '../utils/haryanaGk.js';
 
-const USABLE = { status: { $nin: ['Archived', 'Flagged'] } };
+const USABLE = { status: visibleStatus() };
 
 /** Per-question attempts/correct for this user across exams and practice. */
 const answerStats = async (userId, questionIds) => {
