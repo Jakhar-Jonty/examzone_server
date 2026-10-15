@@ -530,7 +530,7 @@ export const getDashboardStats = async (req, res) => {
         scheduledTime: { $gt: now },
         $or: [{ deleted: false }, { deleted: { $exists: false } }],
       })
-        .select('title category scheduledTime duration totalMarks totalQuestions examType')
+        .select('title category subCategory scheduledTime duration totalMarks totalQuestions examType')
         .sort({ scheduledTime: 1 })
         .limit(3)
         .lean(),
@@ -695,6 +695,15 @@ export const getAllExams = async (req, res) => {
           query.category = categoryId;
         }
       }
+    }
+
+    // Sub-exam filter (focus mode): that sub-exam's exams plus the exam family's general ones
+    const { subExam } = req.query;
+    if (subExam && mongoose.Types.ObjectId.isValid(subExam)) {
+      query.$and = [
+        ...(query.$and || []),
+        { $or: [{ subCategory: new mongoose.Types.ObjectId(subExam) }, { subCategory: null }] },
+      ];
     }
 
     // SubCategory filter

@@ -7,6 +7,7 @@
 //   node scripts/setFocus.js HSSC   |   node scripts/setFocus.js off
 import AppSettings from '../models/AppSettings.js';
 import Category from '../models/Category.js';
+import Exam from '../models/Exam.js';
 
 export const FOCUS_SETTING_KEY = 'focusCategory';
 const DEFAULT_FOCUS = 'HSSC';
@@ -35,11 +36,23 @@ const resolve = async () => {
     .sort({ order: 1, name: 1 })
     .lean();
 
+  // live exams per sub-exam: clients show the sub-exam filter only when 2+ have exams
+  const counts = await Exam.aggregate([
+    { $match: { subCategory: { $in: subCategories.map((c) => c._id) }, status: { $in: ['scheduled', 'active'] } } },
+    { $group: { _id: '$subCategory', n: { $sum: 1 } } },
+  ]);
+  const examCount = new Map(counts.map((c) => [String(c._id), c.n]));
+
   return {
     id: category._id,
     name: category.name,
     logo: category.logo || null,
-    subCategories: subCategories.map(({ _id, name, logo }) => ({ _id, name, logo: logo || null })),
+    subCategories: subCategories.map(({ _id, name, logo }) => ({
+      _id,
+      name,
+      logo: logo || null,
+      examCount: examCount.get(String(_id)) || 0,
+    })),
     // every category id that belongs to the focus (top-level + sub-categories)
     ids: [category._id, ...subCategories.map((c) => c._id)],
   };
