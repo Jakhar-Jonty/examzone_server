@@ -240,29 +240,48 @@ export const enrollSeries = async (req, res) => {
   }
 };
 
-// GET /api/test-series/me/enrollments — my series with live progress
+// GET /api/test-series/me/enrollments — my series (focus exam only) with progress and the next test
 export const getMyEnrollments = async (req, res) => {
   try {
+    const focus = await getFocus();
     const enrollments = await TestSeriesEnrollment.find({ user: req.user._id })
       .populate({
         path: 'testSeries',
-        select: 'title thumbnail seriesType totalTests exams isPremium price enrollmentType',
-        populate: { path: 'exams.exam', select: '_id' },
+        select: 'title thumbnail seriesType totalTests exams isPremium price discountPrice enrollmentType category status',
+        populate: { path: 'exams.exam', select: '_id title scheduledTime' },
       })
       .sort({ enrolledAt: -1 })
       .lean();
 
-    const valid = enrollments.filter((e) => e.testSeries);
+    const focusIds = focus ? new Set(focus.ids.map(String)) : null;
+    const valid = enrollments.filter(
+      (e) => e.testSeries && e.testSeries.status === 'published' && (!focusIds || focusIds.has(String(e.testSeries.category)))
+    );
     const best = await bestAttempts(req.user._id, [...new Set(valid.flatMap((e) => (e.testSeries.exams || []).map(examIdOf)))]);
+    const now = new Date();
+
     res.json({
       enrollments: valid.map((e) => {
-        const progress = progressFrom((e.testSeries.exams || []).map(examIdOf), best);
+        const ordered = [...(e.testSeries.exams || [])].filter((x) => x.exam).sort((a, b) => (a.order || 0) - (b.order || 0));
+        const progress = progressFrom(ordered.map(examIdOf), best);
         delete progress.completedExamIds;
+        const nextIdx = ordered.findIndex(
+          (x) => !best.has(examIdOf(x)) && !(x.exam.scheduledTime && new Date(x.exam.scheduledTime) > now)
+        );
         return {
-          ...e,
+          _id: e._id,
+          enrolledAt: e.enrolledAt,
+          status: e.status,
+          expiresAt: e.expiresAt || null,
           expired: !enrollmentActive(e),
-          testSeries: { ...e.testSeries, exams: undefined, access: seriesAccessType(e.testSeries) },
+          testSeries: {
+            _id: e.testSeries._id,
+            title: e.testSeries.title,
+            seriesType: e.testSeries.seriesType,
+            access: seriesAccessType(e.testSeries),
+          },
           progress,
+          next: nextIdx >= 0 ? { index: nextIdx, examId: examIdOf(ordered[nextIdx]), title: ordered[nextIdx].exam.title } : null,
         };
       }),
     });
