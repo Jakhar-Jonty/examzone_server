@@ -26,6 +26,7 @@ import currentAffairRoutes from './routes/currentAffair.js';
 import configRoutes from './routes/config.js';
 import questionReviewRoutes from './routes/questionReview.js';
 import liveMockRoutes from './routes/liveMock.js';
+import referralRoutes from './routes/referral.js';
 
 dotenv.config();
 
@@ -75,6 +76,7 @@ app.use('/api/current-affairs', currentAffairRoutes);
 app.use('/api/config', configRoutes);
 app.use('/api/question-review', questionReviewRoutes);
 app.use('/api/live-mock', liveMockRoutes);
+app.use('/api/referral', referralRoutes);
 
 app.get('/api/health', (req, res) => {
   res.json({

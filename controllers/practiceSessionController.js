@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { rewardReferralOnActivity } from '../utils/referral.js';
 import { visibleStatus } from '../utils/questionVisibility.js';
 import { getFocus, focusFilter } from '../utils/focus.js';
 import PracticeSession from '../models/PracticeSession.js';
@@ -498,6 +499,7 @@ export const completeSession = async (req, res) => {
     session.isCompleted = true;
 
     await session.save();
+    rewardReferralOnActivity(req.user._id).catch((e) => console.error('referral reward failed:', e.message));
 
     // Practice counts as studying: streak, XP and Wrong Book, like an exam.
     // Nothing for a session where no question was answered.

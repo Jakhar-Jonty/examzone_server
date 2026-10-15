@@ -1,4 +1,5 @@
 import Exam from '../models/Exam.js';
+import { rewardReferralOnActivity } from '../utils/referral.js';
 import ExamAttempt from '../models/ExamAttempt.js';
 import Question from '../models/Question.js';
 import User from '../models/User.js';
@@ -672,6 +673,7 @@ export const submitExam = async (req, res) => {
     attempt.isCompleted = true;
 
     await attempt.save();
+    rewardReferralOnActivity(req.user._id).catch((e) => console.error('referral reward failed:', e.message));
 
     // Auto-sync wrong answers to mistake notebook
     let mistakeNotebook = { added: 0, updated: 0, total: 0 };

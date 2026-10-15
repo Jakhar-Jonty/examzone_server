@@ -213,7 +213,8 @@ const userSchema = new mongoose.Schema({
   // Referral System
   referralCode: { type: String, unique: true, sparse: true },
   referredBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
-  referralCount: { type: Number, default: 0 },
+  referralCount: { type: Number, default: 0 }, // friends who joined and finished a first test
+  referralRewardedAt: { type: Date }, // set on the referred student once both sides were rewarded
 
   // Last Activity
   lastLoginAt: { type: Date },
