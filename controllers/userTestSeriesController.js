@@ -240,6 +240,27 @@ export const enrollSeries = async (req, res) => {
   }
 };
 
+// DELETE /api/test-series/:id/enroll — remove a saved series from My Series.
+// Purchased series stay (removing would look like cancelling a payment).
+export const unenrollSeries = async (req, res) => {
+  try {
+    if (!mongoose.isValidObjectId(req.params.id)) return res.status(404).json({ message: 'Test series not found' });
+    const enrollment = await TestSeriesEnrollment.findOne({ user: req.user._id, testSeries: req.params.id });
+    if (!enrollment) return res.json({ message: 'Not in My Series' });
+    if (enrollment.isPaid) {
+      return res.status(400).json({ message: 'Purchased series stay in My Series.' });
+    }
+    await enrollment.deleteOne();
+    await TestSeries.updateOne(
+      { _id: req.params.id, enrollments: { $gt: 0 } },
+      { $inc: { enrollments: -1, currentEnrollments: -1 } }
+    );
+    res.json({ message: 'Removed from My Series' });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
 // GET /api/test-series/me/enrollments — my series (focus exam only) with progress and the next test
 export const getMyEnrollments = async (req, res) => {
   try {

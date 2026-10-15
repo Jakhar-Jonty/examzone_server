@@ -4,6 +4,7 @@ import {
   getPublishedSeries,
   getSeriesDetail,
   enrollSeries,
+  unenrollSeries,
   getMyEnrollments,
 } from '../controllers/userTestSeriesController.js';
 
@@ -13,5 +14,6 @@ router.get('/', authenticate, getPublishedSeries);
 router.get('/me/enrollments', authenticate, getMyEnrollments);
 router.get('/:id', authenticate, getSeriesDetail);
 router.post('/:id/enroll', authenticate, enrollSeries);
+router.delete('/:id/enroll', authenticate, unenrollSeries);
 
 export default router;
