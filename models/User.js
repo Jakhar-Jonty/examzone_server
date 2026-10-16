@@ -83,11 +83,10 @@ import { getFocus } from '../utils/focus.js';
 // ==========================================
 const userSchema = new mongoose.Schema({
   // Basic Info
+  // unique only when set — see the partial index below (scripts/fixUserIndexes.js)
   phoneNumber: {
     type: String,
     required: false,
-    unique: true,
-    sparse: true,
     trim: true,
   },
   name: {
@@ -95,12 +94,11 @@ const userSchema = new mongoose.Schema({
     required: true,
     trim: true
   },
+  // unique only when set — see the partial index below
   email: {
     type: String,
     trim: true,
     lowercase: true,
-    sparse: true,
-    unique: true,
   },
   password: { type: String },
   googleId: { type: String, sparse: true, index: true },
@@ -243,7 +241,15 @@ const userSchema = new mongoose.Schema({
 });
 
 // Indexes
-userSchema.index({ referralCode: 1 });
+// Optional identifiers: unique among accounts that have them, any number may leave them empty
+userSchema.index(
+  { phoneNumber: 1 },
+  { name: 'phoneNumber_unique_when_set', unique: true, partialFilterExpression: { phoneNumber: { $type: 'string' } } }
+);
+userSchema.index(
+  { email: 1 },
+  { name: 'email_unique_when_set', unique: true, partialFilterExpression: { email: { $type: 'string' } } }
+);
 userSchema.index({ 'examPreparations.category': 1 });
 userSchema.index({ subscriptionStatus: 1, subscriptionExpiry: 1 });
 userSchema.index({ currentStreak: -1 });
