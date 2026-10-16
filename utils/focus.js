@@ -38,7 +38,13 @@ const resolve = async () => {
 
   // live exams per sub-exam: clients show the sub-exam filter only when 2+ have exams
   const counts = await Exam.aggregate([
-    { $match: { subCategory: { $in: subCategories.map((c) => c._id) }, status: { $in: ['scheduled', 'active'] } } },
+    {
+      $match: {
+        subCategory: { $in: subCategories.map((c) => c._id) },
+        status: { $in: ['scheduled', 'active'] },
+        deleted: { $ne: true },
+      },
+    },
     { $group: { _id: '$subCategory', n: { $sum: 1 } } },
   ]);
   const examCount = new Map(counts.map((c) => [String(c._id), c.n]));
