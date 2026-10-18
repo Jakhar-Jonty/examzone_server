@@ -11,7 +11,7 @@ export const REFERRAL = {
   applyWithinDays: 7, // a code can be added up to 7 days after signing up
 };
 
-export const webUrl = () => (process.env.WEB_URL || 'https://examprepzone.vercel.app').replace(/\/$/, '');
+export const webUrl = () => (process.env.WEB_URL || 'https://exam.zonty.in').replace(/\/$/, '');
 export const shareUrl = (code) => `${webUrl()}/register?ref=${encodeURIComponent(code)}`;
 
 const L = (user, en, hi) => (user?.preferredLanguage === 'Hindi' ? hi : en);
