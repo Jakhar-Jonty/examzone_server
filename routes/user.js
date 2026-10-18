@@ -16,6 +16,7 @@ import {
   updateSavedQuestion,
   checkSavedQuestions
 } from '../controllers/userController.js';
+import { deleteAccount } from '../controllers/accountController.js';
 import { upload } from '../config/cloudinary.js';
 import {
   getCurrentWordOfDay,
@@ -26,6 +27,7 @@ const router = express.Router();
 
 router.get('/profile', authenticate, getProfile);
 router.put('/profile', authenticate, updateProfile);
+router.delete('/account', authenticate, deleteAccount);
 router.post('/profile/upload-image', authenticate, upload.single('file'), uploadProfileImage);
 router.get('/exam-history', authenticate, getExamHistory);
 router.get('/dashboard-stats', authenticate, getDashboardStats);
