@@ -551,6 +551,9 @@ export const googleAuthController = async (req, res) => {
     // Find by googleId first, then by email (links existing account)
     let user = await User.findOne({ googleId });
     if (!user && email) user = await User.findOne({ email });
+    // a brand-new account goes to onboarding (examPreparations can't tell:
+    // focus mode pre-fills it on create)
+    const isNewUser = !user;
 
     if (user) {
       if (!user.googleId) {
@@ -565,7 +568,7 @@ export const googleAuthController = async (req, res) => {
 
     const token = generateToken(user._id);
     const userObj = await User.findById(user._id).select('-password');
-    res.json({ token, user: userObj, isNewUser: !user.examPreparations?.length });
+    res.json({ token, user: userObj, isNewUser });
   } catch {
     res.status(401).json({ message: 'Invalid Google token' });
   }
