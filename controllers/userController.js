@@ -217,15 +217,26 @@ export const getExamHistory = async (req, res) => {
 
 export const getDashboardStats = async (req, res) => {
   try {
-    const user = await User.findById(req.user._id);
     const now = new Date();
+    // Independent lookups run in parallel — this endpoint used to make ~15
+    // sequential DB round trips, which dominated Home load time.
+    const { getCategoryIdsFromExamPreparations } = await import('../utils/examPrepHelper.js');
+    const { getStreakInfo } = await import('../utils/streakManager.js');
+    const [user, focus, streakInfo, allCategories] = await Promise.all([
+      User.findById(req.user._id),
+      getFocus(),
+      getStreakInfo(req.user._id),
+      Category.find({ isActive: true, parentCategory: null })
+        .populate('subCategories')
+        .sort({ order: 1 })
+        .lean(),
+    ]);
 
     // Get available exams from last 24 hours only
     // MongoDB stores dates in UTC, comparisons are done in UTC
     const last24Hours = new Date(now.getTime() - 24 * 60 * 60 * 1000);
 
     // Use utility helper to get category IDs from examPreparations
-    const { getCategoryIdsFromExamPreparations } = await import('../utils/examPrepHelper.js');
     const categoryIds = await getCategoryIdsFromExamPreparations(user.examPreparations);
 
     // Build query - handle both old and new category formats
@@ -233,257 +244,250 @@ export const getDashboardStats = async (req, res) => {
       ? { category: { $in: categoryIds } }
       : {}; // If no categories found, return empty (or you could remove this filter)
 
-    const availableExams = await Exam.find({
-      ...categoryQuery,
-      status: { $in: ['scheduled', 'active'] },
-      scheduledTime: {
-        $gte: last24Hours, // Within last 24 hours
-        $lte: now // Already started (or set to now for immediate availability)
-      },
-      $and: [
-        {
-          $or: [
-            { deleted: false },
-            { deleted: { $exists: false } }
-          ]
+    // Available exams (last 24h) with this student's attempt info and question counts
+    const loadAvailableExams = async () => {
+      const availableExams = await Exam.find({
+        ...categoryQuery,
+        status: { $in: ['scheduled', 'active'] },
+        scheduledTime: {
+          $gte: last24Hours, // Within last 24 hours
+          $lte: now // Already started (or set to now for immediate availability)
         },
-        {
+        $and: [
+          {
+            $or: [
+              { deleted: false },
+              { deleted: { $exists: false } }
+            ]
+          },
+          {
+            $or: [
+              { expiresAt: { $gte: now } }, // Has expiration and not expired yet
+              { expiresAt: null }, // No expiration set (available indefinitely)
+              { expiresAt: { $exists: false } } // expiresAt field doesn't exist
+            ]
+          }
+        ]
+      })
+        .select('-questions') // Don't populate questions - only need count
+        .sort({ scheduledTime: -1 })
+        .limit(10);
+
+      const examIds = availableExams.map(exam => exam._id);
+      const [attempts, examQuestionCounts] = await Promise.all([
+        ExamAttempt.find({ user: user._id, exam: { $in: examIds } }).select('exam isCompleted isPaused _id'),
+        Exam.aggregate([
+          { $match: { _id: { $in: examIds } } },
+          { $project: { n: { $size: { $ifNull: ['$questions', []] } } } },
+        ]),
+      ]);
+
+      const attemptMap = {};
+      attempts.forEach(attempt => {
+        attemptMap[attempt.exam.toString()] = {
+          attemptId: attempt._id,
+          isCompleted: attempt.isCompleted,
+          isPaused: attempt.isPaused
+        };
+      });
+      const questionCountMap = {};
+      examQuestionCounts.forEach(exam => {
+        questionCountMap[exam._id.toString()] = exam.n || 0;
+      });
+
+      return availableExams.map(exam => {
+        const attemptInfo = attemptMap[exam._id.toString()];
+        return {
+          ...exam.toObject(),
+          questions: questionCountMap[exam._id.toString()] || 0, // Just the count
+          isAttempted: attemptInfo?.isCompleted || false,
+          isPaused: attemptInfo?.isPaused || false,
+          attemptId: attemptInfo?.attemptId || null
+        };
+      });
+    };
+
+    // Recent exam results (last 5 attempts)
+    const loadRecentAttempts = async () => {
+      try {
+        const recent = await ExamAttempt.find({
+          user: user._id,
+          isCompleted: true,
+          endTime: { $exists: true, $ne: null } // Only get attempts with endTime
+        })
+          .select('_id totalScore percentage correctAnswers incorrectAnswers unattempted timeTaken attemptNumber endTime createdAt exam')
+          .populate({
+            path: 'exam',
+            select: 'title category subCategory tier scheduledTime totalMarks',
+            populate: [
+              { path: 'category', select: 'name code' },
+              { path: 'subCategory', select: 'name code' },
+              { path: 'tier', select: 'name code' }
+            ],
+            match: { deleted: { $ne: true } } // Only include non-deleted exams
+          })
+          .sort({ endTime: -1, createdAt: -1 })
+          .limit(5)
+          .lean();
+        // Filter out attempts where exam was deleted or not found
+        return recent.filter(attempt => attempt.exam);
+      } catch (error) {
+        console.error('Error fetching recent exam results:', error);
+        return [];
+      }
+    };
+
+    // Today's published exams with attempt info
+    const loadTodaysExams = async () => {
+      try {
+        const startOfToday = new Date(now);
+        startOfToday.setHours(0, 0, 0, 0);
+        const endOfToday = new Date(now);
+        endOfToday.setHours(23, 59, 59, 999);
+
+        const todaysPublishedExams = await Exam.find({
+          ...categoryQuery,
+          status: { $in: ['scheduled', 'active'] },
+          scheduledTime: {
+            $gte: startOfToday,
+            $lte: endOfToday
+          },
           $or: [
-            { expiresAt: { $gte: now } }, // Has expiration and not expired yet
-            { expiresAt: null }, // No expiration set (available indefinitely)
-            { expiresAt: { $exists: false } } // expiresAt field doesn't exist
-          ]
+            { expiresAt: { $gte: now } },
+            { expiresAt: null },
+            { expiresAt: { $exists: false } }
+          ],
+          deleted: { $ne: true }
+        })
+          .select('_id title category subCategory tier scheduledTime duration totalMarks status')
+          .populate('category', 'name code logo')
+          .populate('subCategory', 'name code logo')
+          .populate('tier', 'name code image')
+          .sort({ scheduledTime: -1 })
+          .limit(10)
+          .lean();
+
+        const todaysExamIds = todaysPublishedExams.map(exam => exam._id);
+        const todaysAttempts = todaysExamIds.length > 0
+          ? await ExamAttempt.find({ user: user._id, exam: { $in: todaysExamIds } }).select('exam isCompleted isPaused _id').lean()
+          : [];
+
+        const todaysAttemptMap = {};
+        todaysAttempts.forEach(attempt => {
+          todaysAttemptMap[attempt.exam.toString()] = {
+            attemptId: attempt._id,
+            isCompleted: attempt.isCompleted,
+            isPaused: attempt.isPaused
+          };
+        });
+
+        return todaysPublishedExams.map(exam => ({
+          ...exam,
+          isAttempted: todaysAttemptMap[exam._id.toString()]?.isCompleted || false,
+          isPaused: todaysAttemptMap[exam._id.toString()]?.isPaused || false,
+          attemptId: todaysAttemptMap[exam._id.toString()]?.attemptId || null
+        }));
+      } catch (error) {
+        console.error('Error fetching today\'s published exams:', error);
+        return [];
+      }
+    };
+
+    // Exam and question counts per category / sub-category
+    const allCategoryIds = allCategories.map(c => c._id);
+    const subCategoryIds = allCategories.flatMap(c =>
+      (c.subCategories || []).map(sc => sc._id)
+    );
+    const countBy = (Model) => Model.aggregate([
+      {
+        $match: {
+          $or: [
+            { category: { $in: allCategoryIds } },
+            { subCategory: { $in: subCategoryIds } }
+          ],
+          deleted: { $ne: true }
         }
-      ]
-    })
-      .select('-questions') // Don't populate questions - only need count
-      .sort({ scheduledTime: -1 })
-      .limit(10);
-
-    // Get attempt information for each exam
-    const examIds = availableExams.map(exam => exam._id);
-    const attempts = await ExamAttempt.find({
-      user: user._id,
-      exam: { $in: examIds }
-    }).select('exam isCompleted isPaused _id');
-
-    // Map attempts to exams
-    const attemptMap = {};
-    attempts.forEach(attempt => {
-      attemptMap[attempt.exam.toString()] = {
-        attemptId: attempt._id,
-        isCompleted: attempt.isCompleted,
-        isPaused: attempt.isPaused
-      };
-    });
-
-    // Get question counts for all exams in one query
-    const examIdsForCounts = availableExams.map(exam => exam._id);
-    const examQuestionCounts = await Exam.find({ _id: { $in: examIdsForCounts } })
-      .select('_id questions')
-      .lean();
-
-    const questionCountMap = {};
-    examQuestionCounts.forEach(exam => {
-      questionCountMap[exam._id.toString()] = exam.questions?.length || 0;
-    });
-
-    // Add attempt info to exams and include question count
-    const examsWithAttempts = availableExams.map(exam => {
-      const attemptInfo = attemptMap[exam._id.toString()];
-      return {
-        ...exam.toObject(),
-        questions: questionCountMap[exam._id.toString()] || 0, // Just the count
-        isAttempted: attemptInfo?.isCompleted || false,
-        isPaused: attemptInfo?.isPaused || false,
-        attemptId: attemptInfo?.attemptId || null
-      };
-    });
-
-    // Get exam history stats
-    const totalAttempts = await ExamAttempt.countDocuments({
-      user: user._id,
-      isCompleted: true
-    });
-
-    const completedAttempts = await ExamAttempt.find({
-      user: user._id,
-      isCompleted: true
-    }).select('totalScore percentage');
-
-    const averageScore = completedAttempts.length > 0
-      ? completedAttempts.reduce((sum, a) => sum + a.percentage, 0) / completedAttempts.length
-      : 0;
+      },
+      {
+        $group: {
+          _id: {
+            category: "$category",
+            subCategory: "$subCategory"
+          },
+          count: { $sum: 1 }
+        }
+      }
+    ]);
 
     // Get recent articles
     const articleQuery = {
       status: 'published',
       category: { $in: user.examPreparations }
     };
-
     // Only filter by isPremium if user is not premium
     if (user.subscriptionStatus !== 'premium') {
       articleQuery.isPremium = false;
     }
 
-    const recentArticles = await Article.find(articleQuery)
-      .select('title category thumbnail createdAt isPremium')
-      .sort({ createdAt: -1 })
-      .limit(4);
+    // Home screen extras: target exam names, upcoming live tests, today's daily quiz.
+    const prepIds = (user.examPreparations || [])
+      .flatMap((ep) => [ep?.category, ep?.subCategory])
+      .filter((id) => id && mongoose.Types.ObjectId.isValid(id));
+
+    const [
+      examsWithAttempts,
+      completedAttempts,
+      recentArticles,
+      recentAttempts,
+      todaysExamsWithAttempts,
+      examCounts,
+      questionCounts,
+      prepCategories,
+      upcomingExams,
+      dailyQuizSession,
+    ] = await Promise.all([
+      loadAvailableExams(),
+      ExamAttempt.find({ user: user._id, isCompleted: true }).select('percentage').lean(),
+      Article.find(articleQuery)
+        .select('title category thumbnail createdAt isPremium')
+        .sort({ createdAt: -1 })
+        .limit(4),
+      loadRecentAttempts(),
+      loadTodaysExams(),
+      countBy(Exam),
+      countBy(Question),
+      prepIds.length
+        ? Category.find({ _id: { $in: prepIds } }).select('name code').lean()
+        : [],
+      Exam.find({
+        ...categoryQuery,
+        status: { $in: ['scheduled', 'active'] },
+        scheduledTime: { $gt: now },
+        $or: [{ deleted: false }, { deleted: { $exists: false } }],
+      })
+        .select('title category subCategory scheduledTime duration totalMarks totalQuestions examType')
+        .sort({ scheduledTime: 1 })
+        .limit(3)
+        .lean(),
+      PracticeSession.findOne({
+        user: user._id,
+        sessionType: 'daily-quiz',
+        startTime: { $gte: istDayStart(now) },
+      })
+        .select('isCompleted totalQuestions correctAnswers accuracy')
+        .lean(),
+    ]);
+
+    // Exam history stats
+    const totalAttempts = completedAttempts.length;
+    const averageScore = completedAttempts.length > 0
+      ? completedAttempts.reduce((sum, a) => sum + a.percentage, 0) / completedAttempts.length
+      : 0;
 
     // Check weekly limit
-    const daysSinceReset = Math.floor((now - user.lastWeekReset) / (1000 * 60 * 60 * 24));
     const weeklyExamsRemaining = user.subscriptionStatus === 'premium'
       ? 'Unlimited'
       : Math.max(0, 3 - user.weeklyExamsAttempted);
-
-    // Get streak information
-    const { getStreakInfo } = await import('../utils/streakManager.js');
-    const streakInfo = await getStreakInfo(user._id);
-
-    // Get recent exam results (last 5 attempts)
-    let recentAttempts = [];
-    try {
-      recentAttempts = await ExamAttempt.find({
-        user: user._id,
-        isCompleted: true,
-        endTime: { $exists: true, $ne: null } // Only get attempts with endTime
-      })
-        .select('_id totalScore percentage correctAnswers incorrectAnswers unattempted timeTaken attemptNumber endTime createdAt exam')
-        .populate({
-          path: 'exam',
-          select: 'title category subCategory tier scheduledTime totalMarks',
-          populate: [
-            { path: 'category', select: 'name code' },
-            { path: 'subCategory', select: 'name code' },
-            { path: 'tier', select: 'name code' }
-          ],
-          match: { deleted: { $ne: true } } // Only include non-deleted exams
-        })
-        .sort({ endTime: -1, createdAt: -1 })
-        .limit(5)
-        .lean();
-
-      // Filter out attempts where exam was deleted or not found
-      recentAttempts = recentAttempts.filter(attempt => attempt.exam);
-    } catch (error) {
-      console.error('Error fetching recent exam results:', error);
-      recentAttempts = [];
-    }
-
-    // Get today's published exams (exams published today)
-    let todaysExamsWithAttempts = [];
-    try {
-      const startOfToday = new Date(now);
-      startOfToday.setHours(0, 0, 0, 0);
-      const endOfToday = new Date(now);
-      endOfToday.setHours(23, 59, 59, 999);
-
-      const todaysPublishedExams = await Exam.find({
-        ...categoryQuery,
-        status: { $in: ['scheduled', 'active'] },
-        scheduledTime: {
-          $gte: startOfToday,
-          $lte: endOfToday
-        },
-        $or: [
-          { expiresAt: { $gte: now } },
-          { expiresAt: null },
-          { expiresAt: { $exists: false } }
-        ],
-        deleted: { $ne: true }
-      })
-        .select('_id title category subCategory tier scheduledTime duration totalMarks status')
-        .populate('category', 'name code logo')
-        .populate('subCategory', 'name code logo')
-        .populate('tier', 'name code image')
-        .sort({ scheduledTime: -1 })
-        .limit(10)
-        .lean();
-
-      // Get attempt info for today's exams
-      const todaysExamIds = todaysPublishedExams.map(exam => exam._id);
-      let todaysAttempts = [];
-      if (todaysExamIds.length > 0) {
-        todaysAttempts = await ExamAttempt.find({
-          user: user._id,
-          exam: { $in: todaysExamIds }
-        }).select('exam isCompleted isPaused _id').lean();
-      }
-
-      const todaysAttemptMap = {};
-      todaysAttempts.forEach(attempt => {
-        todaysAttemptMap[attempt.exam.toString()] = {
-          attemptId: attempt._id,
-          isCompleted: attempt.isCompleted,
-          isPaused: attempt.isPaused
-        };
-      });
-
-      todaysExamsWithAttempts = todaysPublishedExams.map(exam => ({
-        ...exam,
-        isAttempted: todaysAttemptMap[exam._id.toString()]?.isCompleted || false,
-        isPaused: todaysAttemptMap[exam._id.toString()]?.isPaused || false,
-        attemptId: todaysAttemptMap[exam._id.toString()]?.attemptId || null
-      }));
-    } catch (error) {
-      console.error('Error fetching today\'s published exams:', error);
-      todaysExamsWithAttempts = [];
-    }
-
-    // Get all active categories with their subcategories
-    const allCategories = await Category.find({ isActive: true, parentCategory: null })
-      .populate('subCategories')
-      .sort({ order: 1 })
-      .lean();
-
-    // Get exam and question counts for categories
-    const allCategoryIds = allCategories.map(c => c._id);
-    const subCategoryIds = allCategories.flatMap(c =>
-      (c.subCategories || []).map(sc => sc._id)
-    );
-
-    const examCounts = await Exam.aggregate([
-      {
-        $match: {
-          $or: [
-            { category: { $in: allCategoryIds } },
-            { subCategory: { $in: subCategoryIds } }
-          ],
-          deleted: { $ne: true }
-        }
-      },
-      {
-        $group: {
-          _id: {
-            category: "$category",
-            subCategory: "$subCategory"
-          },
-          count: { $sum: 1 }
-        }
-      }
-    ]);
-
-    const questionCounts = await Question.aggregate([
-      {
-        $match: {
-          $or: [
-            { category: { $in: allCategoryIds } },
-            { subCategory: { $in: subCategoryIds } }
-          ],
-          deleted: { $ne: true }
-        }
-      },
-      {
-        $group: {
-          _id: {
-            category: "$category",
-            subCategory: "$subCategory"
-          },
-          count: { $sum: 1 }
-        }
-      }
-    ]);
 
     const examCountMap = {};
     examCounts.forEach(item => {
@@ -516,32 +520,6 @@ export const getDashboardStats = async (req, res) => {
       }))
     }));
 
-    // Home screen extras: target exam names, upcoming live tests, today's daily quiz.
-    const prepIds = (user.examPreparations || [])
-      .flatMap((ep) => [ep?.category, ep?.subCategory])
-      .filter((id) => id && mongoose.Types.ObjectId.isValid(id));
-    const [prepCategories, upcomingExams, dailyQuizSession] = await Promise.all([
-      prepIds.length
-        ? Category.find({ _id: { $in: prepIds } }).select('name code').lean()
-        : [],
-      Exam.find({
-        ...categoryQuery,
-        status: { $in: ['scheduled', 'active'] },
-        scheduledTime: { $gt: now },
-        $or: [{ deleted: false }, { deleted: { $exists: false } }],
-      })
-        .select('title category subCategory scheduledTime duration totalMarks totalQuestions examType')
-        .sort({ scheduledTime: 1 })
-        .limit(3)
-        .lean(),
-      PracticeSession.findOne({
-        user: user._id,
-        sessionType: 'daily-quiz',
-        startTime: { $gte: istDayStart(now) },
-      })
-        .select('isCompleted totalQuestions correctAnswers accuracy')
-        .lean(),
-    ]);
     const prepNameById = new Map(prepCategories.map((c) => [c._id.toString(), c.name]));
     const targetExams = (user.examPreparations || [])
       .filter((ep) => ep?.category && prepNameById.has(ep.category.toString()))
@@ -553,7 +531,6 @@ export const getDashboardStats = async (req, res) => {
       }))
       .sort((a, b) => Number(b.isPrimary) - Number(a.isPrimary));
     // Focus mode: the target is always the focus exam (keep the student's sub-exam if it belongs to it)
-    const focus = await getFocus();
     const focusTargets = focus
       ? (() => {
           const own = targetExams.filter((t) => String(t.category) === String(focus.id));

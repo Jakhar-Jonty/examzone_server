@@ -85,34 +85,35 @@ export const getAvailableExams = async (req, res) => {
       .select('-questions') // Don't populate questions - only need count
       .sort({ scheduledTime: -1 });
 
-    // Get question counts separately
+    // Question counts and this student's completed attempts, in two queries
     const examIds = exams.map(exam => exam._id);
-    const examQuestionCounts = await Exam.find({ _id: { $in: examIds } })
-      .select('_id questions')
-      .lean();
+    const [examQuestionCounts, completed] = await Promise.all([
+      Exam.aggregate([
+        { $match: { _id: { $in: examIds } } },
+        { $project: { n: { $size: { $ifNull: ['$questions', []] } } } },
+      ]),
+      ExamAttempt.find({ user: user._id, exam: { $in: examIds }, isCompleted: true }).select('_id exam').lean(),
+    ]);
 
     const questionCountMap = {};
     examQuestionCounts.forEach(exam => {
-      questionCountMap[exam._id.toString()] = exam.questions?.length || 0;
+      questionCountMap[exam._id.toString()] = exam.n || 0;
+    });
+    const attemptByExam = {};
+    completed.forEach((a) => {
+      const key = a.exam.toString();
+      if (!attemptByExam[key]) attemptByExam[key] = a._id;
     });
 
-    // Check if user has already attempted each exam
-    const examsWithAttemptStatus = await Promise.all(
-      exams.map(async (exam) => {
-        const attempt = await ExamAttempt.findOne({
-          user: user._id,
-          exam: exam._id,
-          isCompleted: true
-        });
-
-        return {
-          ...exam.toObject(),
-          questions: questionCountMap[exam._id.toString()] || 0, // Just the count
-          isAttempted: !!attempt,
-          attemptId: attempt?._id
-        };
-      })
-    );
+    const examsWithAttemptStatus = exams.map((exam) => {
+      const attemptId = attemptByExam[exam._id.toString()];
+      return {
+        ...exam.toObject(),
+        questions: questionCountMap[exam._id.toString()] || 0, // Just the count
+        isAttempted: !!attemptId,
+        attemptId
+      };
+    });
 
     res.json({ exams: examsWithAttemptStatus });
   } catch (error) {
