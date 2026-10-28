@@ -1,6 +1,7 @@
 import http from 'http';
 import express from 'express';
 import cors from 'cors';
+import helmet from 'helmet';
 import dotenv from 'dotenv';
 import { Server } from 'socket.io';
 import connectDB from './config/db.js';
@@ -40,6 +41,8 @@ if (!isServerless) {
   app.set('trust proxy', 1);
 }
 
+// Security headers; resources may be loaded cross-origin (web app on another domain)
+app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
 app.use(cors({ origin: '*', credentials: true }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
