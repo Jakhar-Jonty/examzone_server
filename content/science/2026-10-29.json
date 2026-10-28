@@ -1,0 +1,569 @@
+[
+[
+"Physics",
+"Easy",
+"What is the SI unit of force?",
+"बल का SI मात्रक क्या है?",
+[
+"Newton",
+"Joule",
+"Watt",
+"Pascal"
+],
+[
+"न्यूटन",
+"जूल",
+"वाट",
+"पास्कल"
+],
+0,
+"Force is measured in newtons (N); joule is energy, watt is power, pascal is pressure.",
+"बल न्यूटन (N) में मापा जाता है; जूल ऊर्जा, वाट शक्ति, पास्कल दाब का मात्रक है।"
+],
+[
+"Physics",
+"Easy",
+"Approximately what is the speed of light in vacuum?",
+"निर्वात में प्रकाश की चाल लगभग कितनी है?",
+[
+"3 × 10⁸ m/s",
+"3 × 10⁶ m/s",
+"3 × 10⁵ m/s",
+"340 m/s"
+],
+[
+"3 × 10⁸ मी/से",
+"3 × 10⁶ मी/से",
+"3 × 10⁵ मी/से",
+"340 मी/से"
+],
+0,
+"Light travels at about 3 × 10⁸ m/s; 340 m/s is roughly the speed of sound in air.",
+"प्रकाश लगभग 3 × 10⁸ मी/से से चलता है; 340 मी/से हवा में ध्वनि की चाल है।"
+],
+[
+"Physics",
+"Easy",
+"Which mirror is used as a rear-view mirror in vehicles?",
+"वाहनों में पीछे देखने के लिए कौन सा दर्पण लगाया जाता है?",
+[
+"Convex mirror",
+"Concave mirror",
+"Plane mirror",
+"Cylindrical mirror"
+],
+[
+"उत्तल दर्पण",
+"अवतल दर्पण",
+"समतल दर्पण",
+"बेलनाकार दर्पण"
+],
+0,
+"A convex mirror gives an erect, smaller image over a wider field of view.",
+"उत्तल दर्पण सीधा, छोटा प्रतिबिंब और बड़ा दृष्टि क्षेत्र देता है।"
+],
+[
+"Physics",
+"Medium",
+"Which instrument is used to measure atmospheric pressure?",
+"वायुमंडलीय दाब मापने के लिए किस यंत्र का उपयोग होता है?",
+[
+"Barometer",
+"Thermometer",
+"Hygrometer",
+"Ammeter"
+],
+[
+"बैरोमीटर",
+"थर्मामीटर",
+"हाइग्रोमीटर",
+"एमीटर"
+],
+0,
+"A barometer measures air pressure; a hygrometer measures humidity.",
+"बैरोमीटर वायुदाब मापता है; हाइग्रोमीटर आर्द्रता।"
+],
+[
+"Physics",
+"Medium",
+"Sound cannot travel through:",
+"ध्वनि किसमें से होकर नहीं जा सकती?",
+[
+"Vacuum",
+"Water",
+"Steel",
+"Air"
+],
+[
+"निर्वात",
+"जल",
+"स्टील",
+"वायु"
+],
+0,
+"Sound needs a medium; it cannot travel through a vacuum.",
+"ध्वनि को माध्यम चाहिए; यह निर्वात में नहीं चल सकती।"
+],
+[
+"Physics",
+"Medium",
+"At what temperature are the Celsius and Fahrenheit scales equal?",
+"किस तापमान पर सेल्सियस और फ़ारेनहाइट पैमाने बराबर होते हैं?",
+[
+"−40°",
+"0°",
+"100°",
+"−273°"
+],
+[
+"−40°",
+"0°",
+"100°",
+"−273°"
+],
+0,
+"F = 9C/5 + 32; setting F = C gives C = −40.",
+"F = 9C/5 + 32; F = C रखने पर C = −40।"
+],
+[
+"Physics",
+"Easy",
+"Which colour of white light deviates the least when passing through a prism?",
+"प्रिज़्म से गुज़रने पर श्वेत प्रकाश का कौन सा रंग सबसे कम विचलित होता है?",
+[
+"Red",
+"Violet",
+"Blue",
+"Green"
+],
+[
+"लाल",
+"बैंगनी",
+"नीला",
+"हरा"
+],
+0,
+"Red has the longest wavelength and bends the least; violet bends the most.",
+"लाल की तरंगदैर्ध्य सबसे अधिक है, यह सबसे कम मुड़ता है; बैंगनी सबसे अधिक।"
+],
+[
+"Chemistry",
+"Easy",
+"What is the chemical formula of water?",
+"जल का रासायनिक सूत्र क्या है?",
+[
+"H₂O",
+"CO₂",
+"H₂O₂",
+"NaCl"
+],
+[
+"H₂O",
+"CO₂",
+"H₂O₂",
+"NaCl"
+],
+0,
+"Water is H₂O; H₂O₂ is hydrogen peroxide.",
+"जल H₂O है; H₂O₂ हाइड्रोजन पेरॉक्साइड है।"
+],
+[
+"Chemistry",
+"Easy",
+"What is the chemical name of common salt?",
+"साधारण नमक का रासायनिक नाम क्या है?",
+[
+"Sodium chloride",
+"Sodium bicarbonate",
+"Calcium carbonate",
+"Potassium chloride"
+],
+[
+"सोडियम क्लोराइड",
+"सोडियम बाइकार्बोनेट",
+"कैल्शियम कार्बोनेट",
+"पोटैशियम क्लोराइड"
+],
+0,
+"Common salt is sodium chloride (NaCl); baking soda is sodium bicarbonate.",
+"साधारण नमक सोडियम क्लोराइड (NaCl) है; बेकिंग सोडा सोडियम बाइकार्बोनेट है।"
+],
+[
+"Chemistry",
+"Easy",
+"Which gas is most abundant in Earth's atmosphere?",
+"पृथ्वी के वायुमंडल में सबसे अधिक मात्रा में कौन सी गैस है?",
+[
+"Nitrogen",
+"Oxygen",
+"Carbon dioxide",
+"Argon"
+],
+[
+"नाइट्रोजन",
+"ऑक्सीजन",
+"कार्बन डाइऑक्साइड",
+"आर्गन"
+],
+0,
+"Nitrogen makes up about 78% of the atmosphere; oxygen about 21%.",
+"वायुमंडल में नाइट्रोजन लगभग 78% और ऑक्सीजन लगभग 21% है।"
+],
+[
+"Chemistry",
+"Easy",
+"What is the pH of pure water at 25°C?",
+"25°C पर शुद्ध जल का pH कितना होता है?",
+[
+"7",
+"0",
+"14",
+"5"
+],
+[
+"7",
+"0",
+"14",
+"5"
+],
+0,
+"Pure water is neutral with pH 7.",
+"शुद्ध जल उदासीन होता है, pH 7।"
+],
+[
+"Chemistry",
+"Medium",
+"Which acid is present in lemon?",
+"नींबू में कौन सा अम्ल होता है?",
+[
+"Citric acid",
+"Acetic acid",
+"Lactic acid",
+"Tartaric acid"
+],
+[
+"सिट्रिक अम्ल",
+"एसिटिक अम्ल",
+"लैक्टिक अम्ल",
+"टार्टरिक अम्ल"
+],
+0,
+"Citrus fruits contain citric acid; vinegar has acetic acid; curd has lactic acid.",
+"नींबू वर्गीय फलों में सिट्रिक अम्ल; सिरके में एसिटिक; दही में लैक्टिक अम्ल।"
+],
+[
+"Chemistry",
+"Medium",
+"Which gas is mainly used in LPG cylinders?",
+"LPG सिलेंडर में मुख्य रूप से कौन सी गैस होती है?",
+[
+"Butane (with propane)",
+"Methane",
+"Hydrogen",
+"Ethylene"
+],
+[
+"ब्यूटेन (प्रोपेन के साथ)",
+"मीथेन",
+"हाइड्रोजन",
+"एथिलीन"
+],
+0,
+"LPG is mostly butane and propane; CNG is mostly methane.",
+"LPG मुख्यतः ब्यूटेन और प्रोपेन है; CNG मुख्यतः मीथेन।"
+],
+[
+"Chemistry",
+"Medium",
+"Which metal is liquid at room temperature?",
+"कमरे के तापमान पर कौन सी धातु द्रव अवस्था में होती है?",
+[
+"Mercury",
+"Sodium",
+"Aluminium",
+"Zinc"
+],
+[
+"पारा",
+"सोडियम",
+"एल्यूमिनियम",
+"जस्ता"
+],
+0,
+"Mercury is the only metal that is liquid at room temperature.",
+"पारा एकमात्र धातु है जो कमरे के तापमान पर द्रव होती है।"
+],
+[
+"Chemistry",
+"Easy",
+"What is the chemical symbol of gold?",
+"सोने का रासायनिक संकेत क्या है?",
+[
+"Au",
+"Ag",
+"Go",
+"Gd"
+],
+[
+"Au",
+"Ag",
+"Go",
+"Gd"
+],
+0,
+"Gold is Au (from Latin aurum); silver is Ag.",
+"सोना Au (लैटिन aurum) है; चाँदी Ag है।"
+],
+[
+"Biology",
+"Easy",
+"Which organ purifies blood in the human body?",
+"मानव शरीर में रक्त को कौन सा अंग शुद्ध करता है?",
+[
+"Kidney",
+"Heart",
+"Lungs",
+"Stomach"
+],
+[
+"गुर्दा (किडनी)",
+"हृदय",
+"फेफड़े",
+"आमाशय"
+],
+0,
+"Kidneys filter waste from the blood and form urine.",
+"गुर्दे रक्त से अपशिष्ट छानकर मूत्र बनाते हैं।"
+],
+[
+"Biology",
+"Easy",
+"Which vitamin is produced in the skin in sunlight?",
+"धूप में त्वचा में कौन सा विटामिन बनता है?",
+[
+"Vitamin D",
+"Vitamin C",
+"Vitamin A",
+"Vitamin K"
+],
+[
+"विटामिन D",
+"विटामिन C",
+"विटामिन A",
+"विटामिन K"
+],
+0,
+"Skin makes vitamin D when exposed to sunlight.",
+"धूप में त्वचा विटामिन D बनाती है।"
+],
+[
+"Biology",
+"Easy",
+"Deficiency of which vitamin causes scurvy?",
+"किस विटामिन की कमी से स्कर्वी रोग होता है?",
+[
+"Vitamin C",
+"Vitamin D",
+"Vitamin B1",
+"Vitamin A"
+],
+[
+"विटामिन C",
+"विटामिन D",
+"विटामिन B1",
+"विटामिन A"
+],
+0,
+"Scurvy is caused by lack of vitamin C; rickets by lack of vitamin D.",
+"स्कर्वी विटामिन C की कमी से; रिकेट्स विटामिन D की कमी से होता है।"
+],
+[
+"Biology",
+"Easy",
+"Which is the largest organ of the human body?",
+"मानव शरीर का सबसे बड़ा अंग कौन सा है?",
+[
+"Skin",
+"Liver",
+"Brain",
+"Heart"
+],
+[
+"त्वचा",
+"यकृत",
+"मस्तिष्क",
+"हृदय"
+],
+0,
+"Skin is the largest organ; the liver is the largest internal organ.",
+"त्वचा सबसे बड़ा अंग है; यकृत सबसे बड़ा आंतरिक अंग है।"
+],
+[
+"Biology",
+"Easy",
+"How many bones are there in an adult human body?",
+"एक वयस्क मानव शरीर में कितनी हड्डियाँ होती हैं?",
+[
+"206",
+"208",
+"300",
+"196"
+],
+[
+"206",
+"208",
+"300",
+"196"
+],
+0,
+"An adult has 206 bones; a newborn has about 300 that fuse over time.",
+"वयस्क में 206 हड्डियाँ होती हैं; नवजात में लगभग 300, जो बाद में जुड़ जाती हैं।"
+],
+[
+"Biology",
+"Medium",
+"Which blood group is known as the universal donor?",
+"किस रक्त समूह को सर्वदाता कहा जाता है?",
+[
+"O negative",
+"AB positive",
+"A positive",
+"B negative"
+],
+[
+"O नेगेटिव",
+"AB पॉज़िटिव",
+"A पॉज़िटिव",
+"B नेगेटिव"
+],
+0,
+"O negative red cells can be given to anyone; AB positive is the universal recipient.",
+"O नेगेटिव किसी को भी दिया जा सकता है; AB पॉज़िटिव सर्वग्राही है।"
+],
+[
+"Biology",
+"Easy",
+"Plants make their food by which process?",
+"पौधे किस प्रक्रिया से अपना भोजन बनाते हैं?",
+[
+"Photosynthesis",
+"Respiration",
+"Transpiration",
+"Digestion"
+],
+[
+"प्रकाश संश्लेषण",
+"श्वसन",
+"वाष्पोत्सर्जन",
+"पाचन"
+],
+0,
+"In photosynthesis, plants use sunlight, water and CO₂ to make glucose and release oxygen.",
+"प्रकाश संश्लेषण में पौधे धूप, जल और CO₂ से ग्लूकोज़ बनाते हैं और ऑक्सीजन छोड़ते हैं।"
+],
+[
+"Biology",
+"Medium",
+"Which part of the cell is called its 'powerhouse'?",
+"कोशिका के किस भाग को 'ऊर्जा घर' (पावरहाउस) कहा जाता है?",
+[
+"Mitochondria",
+"Nucleus",
+"Ribosome",
+"Golgi body"
+],
+[
+"माइटोकॉन्ड्रिया",
+"केंद्रक",
+"राइबोसोम",
+"गॉल्जी काय"
+],
+0,
+"Mitochondria produce energy (ATP) through respiration.",
+"माइटोकॉन्ड्रिया श्वसन से ऊर्जा (ATP) बनाते हैं।"
+],
+[
+"Biology",
+"Medium",
+"Which disease is caused by the Plasmodium parasite?",
+"प्लाज़्मोडियम परजीवी से कौन सा रोग होता है?",
+[
+"Malaria",
+"Dengue",
+"Typhoid",
+"Tuberculosis"
+],
+[
+"मलेरिया",
+"डेंगू",
+"टाइफाइड",
+"क्षय रोग (टीबी)"
+],
+0,
+"Malaria is caused by Plasmodium and spread by female Anopheles mosquitoes.",
+"मलेरिया प्लाज़्मोडियम से होता है और मादा एनोफ़िलीज़ मच्छर फैलाते हैं।"
+],
+[
+"Biology",
+"Medium",
+"Insulin is produced by which organ?",
+"इंसुलिन किस अंग द्वारा बनाया जाता है?",
+[
+"Pancreas",
+"Liver",
+"Thyroid",
+"Kidney"
+],
+[
+"अग्न्याशय",
+"यकृत",
+"थायरॉइड",
+"गुर्दा"
+],
+0,
+"The pancreas makes insulin, which controls blood sugar.",
+"अग्न्याशय इंसुलिन बनाता है, जो रक्त शर्करा नियंत्रित करता है।"
+],
+[
+"Biology",
+"Easy",
+"Which gas do plants release during photosynthesis?",
+"प्रकाश संश्लेषण के दौरान पौधे कौन सी गैस छोड़ते हैं?",
+[
+"Oxygen",
+"Carbon dioxide",
+"Nitrogen",
+"Hydrogen"
+],
+[
+"ऑक्सीजन",
+"कार्बन डाइऑक्साइड",
+"नाइट्रोजन",
+"हाइड्रोजन"
+],
+0,
+"Plants take in CO₂ and release oxygen during photosynthesis.",
+"प्रकाश संश्लेषण में पौधे CO₂ लेते हैं और ऑक्सीजन छोड़ते हैं।"
+],
+[
+"Biology",
+"Medium",
+"The normal human body temperature is about:",
+"मनुष्य के शरीर का सामान्य तापमान लगभग कितना होता है?",
+[
+"37°C",
+"35°C",
+"40°C",
+"32°C"
+],
+[
+"37°C",
+"35°C",
+"40°C",
+"32°C"
+],
+0,
+"Normal body temperature is about 37°C (98.6°F).",
+"शरीर का सामान्य तापमान लगभग 37°C (98.6°F) होता है।"
+]
+]
