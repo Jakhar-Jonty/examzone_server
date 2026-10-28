@@ -11,7 +11,7 @@ const LABELS = ['A', 'B', 'C', 'D'];
 const str = (v) => (typeof v === 'string' ? v.trim() : '');
 const sendError = (res, err) => res.status(err.status || 500).json({ message: err.message });
 
-const toReviewItem = (q) => {
+export const toReviewItem = (q) => {
   const options = (q.options || []).map((o) => o.optionText || '');
   const optionsHindi = (q.optionsHindi || []).map((o) => o.optionText || '');
   return {
@@ -65,6 +65,34 @@ export const listQueue = async (req, res) => {
   }
 };
 
+/**
+ * Apply admin edits from the review screens to a question document.
+ * Throws { status: 400 } on invalid input. Shared with the reported-questions screen.
+ */
+export const applyQuestionEdits = (q, edits) => {
+  const options = (Array.isArray(edits.options) ? edits.options : []).map(str);
+  const optionsHindi = (Array.isArray(edits.optionsHindi) ? edits.optionsHindi : []).map(str);
+  const idx = Number(edits.correctIndex);
+  if (options.length !== 4 || !options.every(Boolean)) {
+    throw Object.assign(new Error('All 4 English options are required.'), { status: 400 });
+  }
+  if (!Number.isInteger(idx) || idx < 0 || idx > 3) throw Object.assign(new Error('Pick the correct option.'), { status: 400 });
+  if (!str(edits.questionText) && !str(edits.questionTextHindi)) {
+    throw Object.assign(new Error('Question text is required.'), { status: 400 });
+  }
+  q.questionText = str(edits.questionText) || str(edits.questionTextHindi);
+  q.questionTextHindi = str(edits.questionTextHindi);
+  q.options = options.map((text, i) => ({ optionText: text, optionLabel: LABELS[i], isCorrect: i === idx }));
+  q.optionsHindi = optionsHindi.length === 4 && optionsHindi.some(Boolean)
+    ? optionsHindi.map((text, i) => ({ optionText: text, optionLabel: LABELS[i] }))
+    : [];
+  q.correctAnswer = LABELS[idx];
+  q.explanation = str(edits.explanation);
+  q.explanationHindi = str(edits.explanationHindi);
+  if (['Easy', 'Medium', 'Hard'].includes(edits.difficulty)) q.difficulty = edits.difficulty;
+  if (str(edits.topic)) q.topic = str(edits.topic);
+};
+
 // POST /api/question-review/:id { action: 'approve' | 'reject', edits? }
 export const reviewQuestion = async (req, res) => {
   try {
@@ -82,29 +110,7 @@ export const reviewQuestion = async (req, res) => {
       return res.json({ id: q._id, status: q.status });
     }
 
-    if (edits) {
-      const options = (Array.isArray(edits.options) ? edits.options : []).map(str);
-      const optionsHindi = (Array.isArray(edits.optionsHindi) ? edits.optionsHindi : []).map(str);
-      const idx = Number(edits.correctIndex);
-      if (options.length !== 4 || !options.every(Boolean)) {
-        return res.status(400).json({ message: 'All 4 English options are required.' });
-      }
-      if (!Number.isInteger(idx) || idx < 0 || idx > 3) return res.status(400).json({ message: 'Pick the correct option.' });
-      if (!str(edits.questionText) && !str(edits.questionTextHindi)) {
-        return res.status(400).json({ message: 'Question text is required.' });
-      }
-      q.questionText = str(edits.questionText) || str(edits.questionTextHindi);
-      q.questionTextHindi = str(edits.questionTextHindi);
-      q.options = options.map((text, i) => ({ optionText: text, optionLabel: LABELS[i], isCorrect: i === idx }));
-      q.optionsHindi = optionsHindi.length === 4 && optionsHindi.some(Boolean)
-        ? optionsHindi.map((text, i) => ({ optionText: text, optionLabel: LABELS[i] }))
-        : [];
-      q.correctAnswer = LABELS[idx];
-      q.explanation = str(edits.explanation);
-      q.explanationHindi = str(edits.explanationHindi);
-      if (['Easy', 'Medium', 'Hard'].includes(edits.difficulty)) q.difficulty = edits.difficulty;
-      if (str(edits.topic)) q.topic = str(edits.topic);
-    }
+    if (edits) applyQuestionEdits(q, edits);
 
     q.status = 'Published';
     q.humanVerified = true;
