@@ -1,12 +1,15 @@
 // Insert a reviewed batch of bilingual questions (dry run unless --apply):
-//   node scripts/insertQuestionBatch.mjs content/haryana-gk/2026-10-28.json hgk-2026-10-28 [--apply]
+//   node scripts/insertQuestionBatch.mjs content/haryana-gk/2026-10-28.json hgk-2026-10-28 [--subject=Maths] [--apply]
+// --subject defaults to "Haryana GK".
 // Checks shape and near-duplicates against the bank, and spreads the correct answer evenly over A-D.
 // rows: [topic, difficulty, q, qHindi, [4 options], [4 Hindi options], correctIndex, explanation, explanationHindi]
 import fs from 'fs';
 import dotenv from 'dotenv';
 import mongoose from 'mongoose';
 dotenv.config();
-const [,, file, batchTag, flag] = process.argv; const APPLY = flag === '--apply';
+const [,, file, batchTag, ...flags] = process.argv; const APPLY = flags.includes('--apply');
+const SUBJECT = (flags.find((f) => f.startsWith('--subject=')) || '--subject=Haryana GK').slice('--subject='.length);
+const subjectTag = SUBJECT.toLowerCase().replace(/[^a-z0-9]+/g, '-');
 const rows = JSON.parse(fs.readFileSync(file, 'utf8'));
 await mongoose.connect(process.env.MONGODB_URI); const db = mongoose.connection.db;
 const hssc = await db.collection('categories').findOne({ name: /^hssc$/i, parentCategory: null }, { projection: { _id: 1 } });
@@ -31,15 +34,15 @@ rows.forEach((r, i) => {
     options: order.map((k, j) => ({ optionText: o[k], optionLabel: L[j], isCorrect: j === correct })),
     optionsHindi: order.map((k, j) => ({ optionText: oh[k], optionLabel: L[j] })),
     correctAnswer: L[correct], explanation: e, explanationHindi: eh,
-    category: hssc._id, subject: 'Haryana GK', topic, difficulty, language: 'Both',
+    category: hssc._id, subject: SUBJECT, topic, difficulty, language: 'Both',
     isAIGenerated: true, humanVerified: false, status: 'Published', publishedAt: new Date(),
-    marks: 1, negativeMarking: 0, flags: [], tags: ['haryana-gk', 'claude-authored', batchTag],
+    marks: 1, negativeMarking: 0, flags: [], tags: [subjectTag, 'claude-authored', batchTag],
     createdAt: new Date(), updatedAt: new Date(),
   });
 });
 const dist = {}; docs.forEach((d) => (dist[d.correctAnswer] = (dist[d.correctAnswer] || 0) + 1));
 const byTopic = {}; docs.forEach((d) => (byTopic[d.topic] = (byTopic[d.topic] || 0) + 1));
-console.log('questions:', docs.length, '| answers', JSON.stringify(dist), '| topics', JSON.stringify(byTopic));
+console.log(SUBJECT, '| questions:', docs.length, '| answers', JSON.stringify(dist), '| topics', JSON.stringify(byTopic));
 problems.forEach((p) => console.log('  !', p));
 if (APPLY) {
   const res = await db.collection('questions').insertMany(docs);
