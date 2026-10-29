@@ -85,6 +85,7 @@ const run = async () => {
     ...(cetC ? { subCategory: cetC._id } : {}),
     examType: 'pyq',
     examPattern: 'Single',
+    deliveryMode: 'both', // online, or solve on paper and fill the OMR in the app
     scheduledTime: new Date(),
     duration: Math.round((105 * docs.length) / 100),
     questions: inserted.map((q) => q._id),

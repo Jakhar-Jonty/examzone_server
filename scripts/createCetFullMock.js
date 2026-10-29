@@ -84,6 +84,7 @@ const run = async () => {
     ...(cetC ? { subCategory: cetC._id } : {}),
     examType: 'mock',
     examPattern: 'Single',
+    deliveryMode: 'both', // online, or solve on paper and fill the OMR in the app
     scheduledTime: new Date(),
     duration: DURATION,
     questions: picked,
