@@ -8,6 +8,7 @@ import {
 } from './reminders.js';
 import { ensureUpcomingLiveMock } from './liveMock.js';
 import { expireSubscriptions } from './referral.js';
+import { autoDraftCurrentAffairs } from './currentAffairsAutoDraft.js';
 
 /**
  * Timed jobs. Runs only on the long-lived server (EC2 / PM2 with one
@@ -51,6 +52,14 @@ export const startScheduler = () => {
     noOverlap: true,
   });
 
+  // Current affairs: draft 2 items from official PIB releases, morning and evening.
+  // Drafts only — an admin publishes them. Set AUTO_CURRENT_AFFAIRS=false to stop.
+  if (process.env.AUTO_CURRENT_AFFAIRS !== 'false') {
+    const draftCA = run('current-affairs-drafts', () => autoDraftCurrentAffairs({ max: 2 }));
+    cron.schedule('0 7 * * *', draftCA, { timezone, name: 'ca-drafts-am', noOverlap: true });
+    cron.schedule('0 18 * * *', draftCA, { timezone, name: 'ca-drafts-pm', noOverlap: true });
+  }
+
   // premium (incl. referral rewards) ends when its expiry passes
   cron.schedule('7 * * * *', run('expire-subscriptions', expireSubscriptions, { quiet: true }), {
     timezone,
@@ -60,6 +69,7 @@ export const startScheduler = () => {
 
   console.log(
     '[scheduler] scheduled (IST): premium expiry hourly, daily quiz 8:00, streak 20:00, live tests every 5 min, ' +
-      'live mock create 6:00 daily, live mock eve Sat 19:00, live mock results every 5 min'
+      'live mock create 6:00 daily, live mock eve Sat 19:00, live mock results every 5 min, ' +
+      'current-affairs drafts 7:00 + 18:00'
   );
 };

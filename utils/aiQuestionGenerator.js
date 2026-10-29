@@ -5,26 +5,26 @@ import { GoogleGenAI } from '@google/genai';
 let openai = null;
 let gemini = null;
 
+/**
+ * Pick the AI provider. A real OpenAI key (starts with "sk-") wins, so adding one
+ * switches every AI feature to OpenAI; otherwise Gemini is used. Google keys
+ * ("AIza…") are treated as Gemini even if stored in OPENAI_API_KEY.
+ * AI_PROVIDER=gemini|openai forces one.
+ */
 export const getAIClient = () => {
-  const apiKey = process.env.GEMINI_API_KEY || process.env.OPENAI_API_KEY;
-  if (!apiKey) {
-    throw new Error('GEMINI_API_KEY or OPENAI_API_KEY environment variable is not set');
-  }
+  const openaiKey = process.env.OPENAI_API_KEY || '';
+  const geminiKey = process.env.GEMINI_API_KEY || (openaiKey.startsWith('AIza') ? openaiKey : '');
+  const forced = (process.env.AI_PROVIDER || '').toLowerCase();
+  const useOpenAI = forced === 'openai' || (forced !== 'gemini' && openaiKey.startsWith('sk-'));
 
-  // Use native Gemini SDK if GEMINI_API_KEY is present
-  if (process.env.GEMINI_API_KEY) {
-    if (!gemini) {
-      gemini = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-    }
-    return { type: 'gemini', client: gemini };
-  } else {
-    if (!openai) {
-      openai = new OpenAI({
-        apiKey: process.env.OPENAI_API_KEY,
-      });
-    }
+  if (useOpenAI) {
+    if (!openaiKey) throw new Error('AI_PROVIDER=openai but OPENAI_API_KEY is not set');
+    if (!openai) openai = new OpenAI({ apiKey: openaiKey });
     return { type: 'openai', client: openai };
   }
+  if (!geminiKey) throw new Error('Set GEMINI_API_KEY (or an OpenAI key in OPENAI_API_KEY) to use AI features');
+  if (!gemini) gemini = new GoogleGenAI({ apiKey: geminiKey });
+  return { type: 'gemini', client: gemini };
 };
 
 // ============================================================
