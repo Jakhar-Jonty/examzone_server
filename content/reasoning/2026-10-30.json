@@ -1,0 +1,842 @@
+[
+[
+"Number Series",
+"Medium",
+"Find the next number: 7, 14, 28, 56, ?",
+"अगली संख्या ज्ञात कीजिए: 7, 14, 28, 56, ?",
+[
+"112",
+"84",
+"98",
+"120"
+],
+[
+"112",
+"84",
+"98",
+"120"
+],
+0,
+"Each term × 2. Next = 112.",
+"हर पद × 2। अगला = 112।"
+],
+[
+"Number Series",
+"Medium",
+"Find the next number: 3, 7, 15, 31, 63, ?",
+"अगली संख्या ज्ञात कीजिए: 3, 7, 15, 31, 63, ?",
+[
+"127",
+"125",
+"126",
+"129"
+],
+[
+"127",
+"125",
+"126",
+"129"
+],
+0,
+"Each term × 2 + 1. Next = 127.",
+"हर पद × 2 + 1। अगला = 127।"
+],
+[
+"Number Series",
+"Easy",
+"Find the next number: 6, 11, 21, 36, 56, ?",
+"अगली संख्या ज्ञात कीजिए: 6, 11, 21, 36, 56, ?",
+[
+"81",
+"76",
+"86",
+"79"
+],
+[
+"81",
+"76",
+"86",
+"79"
+],
+0,
+"Differences 5, 10, 15, 20, 25. Next = 81.",
+"अंतर 5, 10, 15, 20, 25। अगला = 81।"
+],
+[
+"Number Series",
+"Medium",
+"Find the next number: 2, 6, 18, 54, ?",
+"अगली संख्या ज्ञात कीजिए: 2, 6, 18, 54, ?",
+[
+"162",
+"108",
+"156",
+"216"
+],
+[
+"162",
+"108",
+"156",
+"216"
+],
+0,
+"Each term × 3. Next = 162.",
+"हर पद × 3। अगला = 162।"
+],
+[
+"Number Series",
+"Easy",
+"Find the next number: 120, 60, 20, 5, ?",
+"अगली संख्या ज्ञात कीजिए: 120, 60, 20, 5, ?",
+[
+"1",
+"2",
+"0.5",
+"4"
+],
+[
+"1",
+"2",
+"0.5",
+"4"
+],
+0,
+"Divide by 2, 3, 4, 5. Next = 1.",
+"क्रम से 2, 3, 4, 5 से भाग। अगला = 1।"
+],
+[
+"Number Series",
+"Medium",
+"Find the next number: 1, 2, 6, 24, 120, ?",
+"अगली संख्या ज्ञात कीजिए: 1, 2, 6, 24, 120, ?",
+[
+"720",
+"600",
+"240",
+"840"
+],
+[
+"720",
+"600",
+"240",
+"840"
+],
+0,
+"Multiply by 2, 3, 4, 5, 6 (factorials). Next = 720.",
+"क्रम से 2, 3, 4, 5, 6 से गुणा (क्रमगुणित)। अगला = 720।"
+],
+[
+"Number Series",
+"Easy",
+"Find the next number: 11, 13, 17, 19, 23, ?",
+"अगली संख्या ज्ञात कीजिए: 11, 13, 17, 19, 23, ?",
+[
+"29",
+"25",
+"27",
+"31"
+],
+[
+"29",
+"25",
+"27",
+"31"
+],
+0,
+"Consecutive primes. Next = 29.",
+"क्रमागत अभाज्य संख्याएँ। अगला = 29।"
+],
+[
+"Number Series",
+"Medium",
+"Find the missing number: 2, 5, 11, 23, ?, 95",
+"लुप्त संख्या ज्ञात कीजिए: 2, 5, 11, 23, ?, 95",
+[
+"47",
+"46",
+"45",
+"48"
+],
+[
+"47",
+"46",
+"45",
+"48"
+],
+0,
+"Each term × 2 + 1: 23 × 2 + 1 = 47, 47 × 2 + 1 = 95.",
+"हर पद × 2 + 1: 23 × 2 + 1 = 47, 47 × 2 + 1 = 95।"
+],
+[
+"Number Series",
+"Medium",
+"Find the wrong number in the series: 4, 8, 16, 30, 64",
+"श्रृंखला में गलत संख्या ज्ञात कीजिए: 4, 8, 16, 30, 64",
+[
+"30",
+"16",
+"8",
+"64"
+],
+[
+"30",
+"16",
+"8",
+"64"
+],
+0,
+"Each term doubles; 30 should be 32.",
+"हर पद दोगुना होता है; 30 के स्थान पर 32 होना चाहिए।"
+],
+[
+"Letter Series",
+"Easy",
+"Find the next letter: B, F, J, N, R, ?",
+"अगला अक्षर ज्ञात कीजिए: B, F, J, N, R, ?",
+[
+"V",
+"W",
+"U",
+"X"
+],
+[
+"V",
+"W",
+"U",
+"X"
+],
+0,
+"Each letter moves 4 places forward; next is V.",
+"हर अक्षर 4 स्थान आगे जाता है; अगला V।"
+],
+[
+"Letter Series",
+"Easy",
+"Find the next letter: Y, V, S, P, M, ?",
+"अगला अक्षर ज्ञात कीजिए: Y, V, S, P, M, ?",
+[
+"J",
+"K",
+"I",
+"L"
+],
+[
+"J",
+"K",
+"I",
+"L"
+],
+0,
+"Each letter moves 3 places back; next is J.",
+"हर अक्षर 3 स्थान पीछे जाता है; अगला J।"
+],
+[
+"Letter Series",
+"Medium",
+"Find the next term: AB, DE, GH, JK, ?",
+"अगला पद ज्ञात कीजिए: AB, DE, GH, JK, ?",
+[
+"MN",
+"LM",
+"NO",
+"MO"
+],
+[
+"MN",
+"LM",
+"NO",
+"MO"
+],
+0,
+"Each pair starts 3 letters after the previous pair's start: A, D, G, J, M → MN.",
+"हर जोड़ा पिछले जोड़े से 3 अक्षर आगे शुरू होता है: A, D, G, J, M → MN।"
+],
+[
+"Alphabet",
+"Easy",
+"What is the sum of the positions of K and P in the English alphabet?",
+"अंग्रेज़ी वर्णमाला में K और P के स्थानों का योग क्या है?",
+[
+"27",
+"26",
+"28",
+"29"
+],
+[
+"27",
+"26",
+"28",
+"29"
+],
+0,
+"K = 11, P = 16; sum = 27.",
+"K = 11, P = 16; योग = 27।"
+],
+[
+"Alphabet",
+"Medium",
+"Which letter is exactly midway between D and P in the English alphabet?",
+"अंग्रेज़ी वर्णमाला में D और P के ठीक बीच में कौन सा अक्षर है?",
+[
+"J",
+"I",
+"K",
+"L"
+],
+[
+"J",
+"I",
+"K",
+"L"
+],
+0,
+"D = 4, P = 16; midway = 10 = J.",
+"D = 4, P = 16; बीच = 10 = J।"
+],
+[
+"Coding-Decoding",
+"Medium",
+"If RAIN is coded as TCKP, how is CLOUD coded?",
+"यदि RAIN को TCKP लिखा जाता है, तो CLOUD को कैसे लिखा जाएगा?",
+[
+"ENQWF",
+"FORXG",
+"DMPVE",
+"AJMSB"
+],
+[
+"ENQWF",
+"FORXG",
+"DMPVE",
+"AJMSB"
+],
+0,
+"Each letter shifts 2 forward: CLOUD → ENQWF.",
+"हर अक्षर 2 स्थान आगे: CLOUD → ENQWF।"
+],
+[
+"Coding-Decoding",
+"Medium",
+"If TABLE is coded as RYZJC, how is CHAIR coded?",
+"यदि TABLE को RYZJC लिखा जाता है, तो CHAIR को कैसे लिखा जाएगा?",
+[
+"AFYGP",
+"BGZHQ",
+"ZEXFO",
+"EJCKT"
+],
+[
+"AFYGP",
+"BGZHQ",
+"ZEXFO",
+"EJCKT"
+],
+0,
+"Each letter shifts 2 back: CHAIR → AFYGP.",
+"हर अक्षर 2 स्थान पीछे: CHAIR → AFYGP।"
+],
+[
+"Coding-Decoding",
+"Medium",
+"If CAT = 24 (C=3, A=1, T=20 added), what is DOG?",
+"यदि CAT = 24 (C=3, A=1, T=20 का योग), तो DOG = ?",
+[
+"26",
+"24",
+"29",
+"27"
+],
+[
+"26",
+"24",
+"29",
+"27"
+],
+0,
+"D = 4, O = 15, G = 7; sum = 26.",
+"D = 4, O = 15, G = 7; योग = 26।"
+],
+[
+"Coding-Decoding",
+"Medium",
+"If 'PAPER' is written as 'REPAP', how is 'PENCIL' written?",
+"यदि 'PAPER' को 'REPAP' लिखा जाता है, तो 'PENCIL' कैसे लिखा जाएगा?",
+[
+"LICNEP",
+"LICENP",
+"PENCIL",
+"LCINEP"
+],
+[
+"LICNEP",
+"LICENP",
+"PENCIL",
+"LCINEP"
+],
+0,
+"The word is reversed.",
+"शब्द उल्टा लिखा गया है।"
+],
+[
+"Mathematical Operations",
+"Medium",
+"If '+' means '×', '×' means '−', '−' means '÷' and '÷' means '+', what is 8 + 4 × 6 − 3 ÷ 5?",
+"यदि '+' का अर्थ '×', '×' का अर्थ '−', '−' का अर्थ '÷' और '÷' का अर्थ '+' है, तो 8 + 4 × 6 − 3 ÷ 5 = ?",
+[
+"35",
+"33",
+"29",
+"37"
+],
+[
+"35",
+"33",
+"29",
+"37"
+],
+0,
+"Becomes 8 × 4 − 6 ÷ 3 + 5 = 32 − 2 + 5 = 35.",
+"बनता है 8 × 4 − 6 ÷ 3 + 5 = 32 − 2 + 5 = 35।"
+],
+[
+"Calendar",
+"Hard",
+"What day of the week was 1 January 2000?",
+"1 जनवरी 2000 को सप्ताह का कौन सा दिन था?",
+[
+"Saturday",
+"Sunday",
+"Tuesday",
+"Friday"
+],
+[
+"शनिवार",
+"रविवार",
+"मंगलवार",
+"शुक्रवार"
+],
+0,
+"1 January 2000 was a Saturday.",
+"1 जनवरी 2000 को शनिवार था।"
+],
+[
+"Calendar",
+"Hard",
+"What day of the week was 2 October 1869 (Gandhi's birth)?",
+"2 अक्टूबर 1869 (गांधीजी का जन्म) को सप्ताह का कौन सा दिन था?",
+[
+"Saturday",
+"Sunday",
+"Tuesday",
+"Friday"
+],
+[
+"शनिवार",
+"रविवार",
+"मंगलवार",
+"शुक्रवार"
+],
+0,
+"2 October 1869 (Gandhi's birth) was a Saturday.",
+"2 अक्टूबर 1869 (गांधीजी का जन्म) को शनिवार था।"
+],
+[
+"Calendar",
+"Medium",
+"If 5 March is a Tuesday, what day is 26 March of the same year?",
+"यदि 5 मार्च को मंगलवार है, तो उसी वर्ष 26 मार्च को कौन सा दिन होगा?",
+[
+"Tuesday",
+"Monday",
+"Wednesday",
+"Friday"
+],
+[
+"मंगलवार",
+"सोमवार",
+"बुधवार",
+"शुक्रवार"
+],
+0,
+"26 − 5 = 21 days = exactly 3 weeks, so it is also a Tuesday.",
+"26 − 5 = 21 दिन = ठीक 3 सप्ताह, अतः मंगलवार ही।"
+],
+[
+"Calendar",
+"Easy",
+"Which of these years is a leap year?",
+"इनमें से कौन सा वर्ष लीप वर्ष है?",
+[
+"2024",
+"2100",
+"2023",
+"1900"
+],
+[
+"2024",
+"2100",
+"2023",
+"1900"
+],
+0,
+"Divisible by 4, and century years only if divisible by 400: 2024 is; 2100 and 1900 are not.",
+"4 से विभाज्य, और शताब्दी वर्ष केवल 400 से विभाज्य होने पर: 2024 है; 2100 और 1900 नहीं।"
+],
+[
+"Clock",
+"Medium",
+"What is the angle between the hands of a clock at 6:00?",
+"6:00 बजे घड़ी की सुइयों के बीच का कोण कितना है?",
+[
+"180°",
+"15°",
+"130°",
+"120°"
+],
+[
+"180°",
+"15°",
+"130°",
+"120°"
+],
+0,
+"|30×6 − 5.5×0| = 180°.",
+"|30×6 − 5.5×0| = 180°।"
+],
+[
+"Clock",
+"Medium",
+"What is the angle between the hands of a clock at 5:30?",
+"5:30 बजे घड़ी की सुइयों के बीच का कोण कितना है?",
+[
+"15°",
+"180°",
+"130°",
+"120°"
+],
+[
+"15°",
+"180°",
+"130°",
+"120°"
+],
+0,
+"|30×5 − 5.5×30| = 15°.",
+"|30×5 − 5.5×30| = 15°।"
+],
+[
+"Clock",
+"Medium",
+"What is the angle between the hands of a clock at 8:20?",
+"8:20 बजे घड़ी की सुइयों के बीच का कोण कितना है?",
+[
+"130°",
+"180°",
+"15°",
+"120°"
+],
+[
+"130°",
+"180°",
+"15°",
+"120°"
+],
+0,
+"|30×8 − 5.5×20| = 130°.",
+"|30×8 − 5.5×20| = 130°।"
+],
+[
+"Clock",
+"Medium",
+"How many times do the hands of a clock coincide in a day?",
+"एक दिन में घड़ी की सुइयाँ कितनी बार एक-दूसरे पर आती हैं?",
+[
+"22",
+"24",
+"12",
+"48"
+],
+[
+"22",
+"24",
+"12",
+"48"
+],
+0,
+"They coincide 11 times in 12 hours, so 22 times in 24 hours.",
+"12 घंटे में 11 बार, अतः 24 घंटे में 22 बार।"
+],
+[
+"Direction",
+"Medium",
+"Kiran walks 5 km south, then 12 km west. How far is she from the start?",
+"किरण 5 किमी दक्षिण और फिर 12 किमी पश्चिम चलती है। वह आरंभ से कितनी दूर है?",
+[
+"13 km",
+"17 km",
+"7 km",
+"15 km"
+],
+[
+"13 किमी",
+"17 किमी",
+"7 किमी",
+"15 किमी"
+],
+0,
+"√(5² + 12²) = 13 km.",
+"√(5² + 12²) = 13 किमी।"
+],
+[
+"Direction",
+"Medium",
+"In the evening, Raj's shadow falls directly behind him. Which way is he facing?",
+"शाम को राज की परछाई ठीक उसके पीछे पड़ती है। उसका मुँह किस दिशा में है?",
+[
+"West",
+"East",
+"North",
+"South"
+],
+[
+"पश्चिम",
+"पूर्व",
+"उत्तर",
+"दक्षिण"
+],
+0,
+"Evening sun is in the west and shadows fall east; shadow behind him means he faces west.",
+"शाम को सूर्य पश्चिम में और परछाई पूर्व में; परछाई पीछे है तो मुँह पश्चिम की ओर।"
+],
+[
+"Direction",
+"Easy",
+"Facing west, Asha turns right twice (90° each). Which direction does she face now?",
+"पश्चिम की ओर मुँह किए आशा दो बार दाएँ (हर बार 90°) मुड़ती है। अब वह किस दिशा में है?",
+[
+"East",
+"North",
+"South",
+"West"
+],
+[
+"पूर्व",
+"उत्तर",
+"दक्षिण",
+"पश्चिम"
+],
+0,
+"West → right = north → right = east.",
+"पश्चिम → दाएँ = उत्तर → दाएँ = पूर्व।"
+],
+[
+"Ranking",
+"Easy",
+"In a class of 45, Mohan's rank is 18th from the top. What is his rank from the bottom?",
+"45 छात्रों की कक्षा में मोहन ऊपर से 18वाँ है। नीचे से उसका स्थान क्या है?",
+[
+"28",
+"27",
+"29",
+"26"
+],
+[
+"28",
+"27",
+"29",
+"26"
+],
+0,
+"45 − 18 + 1 = 28.",
+"45 − 18 + 1 = 28।"
+],
+[
+"Ranking",
+"Medium",
+"In a row, A is 10th from the left and B is 15th from the right. If they interchange, A becomes 18th from the left. How many people are in the row?",
+"एक पंक्ति में A बाएँ से 10वाँ और B दाएँ से 15वाँ है। स्थान बदलने पर A बाएँ से 18वाँ हो जाता है। पंक्ति में कितने लोग हैं?",
+[
+"32",
+"33",
+"31",
+"43"
+],
+[
+"32",
+"33",
+"31",
+"43"
+],
+0,
+"A takes B's place: 18th from left and 15th from right → 18 + 15 − 1 = 32.",
+"A, B के स्थान पर: बाएँ से 18वाँ, दाएँ से 15वाँ → 18 + 15 − 1 = 32।"
+],
+[
+"Blood Relation",
+"Medium",
+"Ravi is the son of Mohan. Mohan is the brother of Sita. How is Sita related to Ravi?",
+"रवि, मोहन का पुत्र है। मोहन, सीता का भाई है। सीता, रवि की क्या लगती है?",
+[
+"Aunt (father's sister)",
+"Mother",
+"Sister",
+"Grandmother"
+],
+[
+"बुआ",
+"माँ",
+"बहन",
+"दादी"
+],
+0,
+"Sita is the sister of Ravi's father, so she is his aunt (bua).",
+"सीता रवि के पिता की बहन है, अतः बुआ।"
+],
+[
+"Blood Relation",
+"Medium",
+"Introducing a woman, Amit says, 'Her mother is the only daughter of my mother.' How is Amit related to the woman?",
+"एक महिला का परिचय देते हुए अमित कहता है, 'इसकी माँ मेरी माँ की इकलौती बेटी है।' अमित उस महिला का क्या लगता है?",
+[
+"Maternal uncle (mama)",
+"Father",
+"Brother",
+"Grandfather"
+],
+[
+"मामा",
+"पिता",
+"भाई",
+"नाना"
+],
+0,
+"The only daughter of Amit's mother is Amit's sister; her daughter's mama is Amit.",
+"अमित की माँ की इकलौती बेटी = अमित की बहन; उसकी बेटी के मामा = अमित।"
+],
+[
+"Analogy",
+"Easy",
+"Eye : See :: Ear : ?",
+"आँख : देखना :: कान : ?",
+[
+"Hear",
+"Speak",
+"Smell",
+"Touch"
+],
+[
+"सुनना",
+"बोलना",
+"सूँघना",
+"छूना"
+],
+0,
+"The eye is for seeing; the ear is for hearing.",
+"आँख देखने के लिए; कान सुनने के लिए।"
+],
+[
+"Analogy",
+"Easy",
+"3 : 27 :: 5 : ?",
+"3 : 27 :: 5 : ?",
+[
+"125",
+"25",
+"75",
+"15"
+],
+[
+"125",
+"25",
+"75",
+"15"
+],
+0,
+"27 = 3³; so 5³ = 125.",
+"27 = 3³; अतः 5³ = 125।"
+],
+[
+"Analogy",
+"Medium",
+"Painter : Brush :: Writer : ?",
+"चित्रकार : ब्रश :: लेखक : ?",
+[
+"Pen",
+"Book",
+"Paper",
+"Story"
+],
+[
+"कलम",
+"पुस्तक",
+"कागज़",
+"कहानी"
+],
+0,
+"A brush is a painter's tool; a pen is a writer's tool.",
+"ब्रश चित्रकार का औज़ार; कलम लेखक का।"
+],
+[
+"Odd One Out",
+"Easy",
+"Find the odd one out: Rose, Lotus, Lily, Mango",
+"विषम को चुनिए: गुलाब, कमल, लिली, आम",
+[
+"Mango",
+"Rose",
+"Lotus",
+"Lily"
+],
+[
+"आम",
+"गुलाब",
+"कमल",
+"लिली"
+],
+0,
+"Mango is a fruit; the others are flowers.",
+"आम फल है; बाकी फूल हैं।"
+],
+[
+"Odd One Out",
+"Easy",
+"Find the odd one out: 27, 64, 125, 150",
+"विषम को चुनिए: 27, 64, 125, 150",
+[
+"150",
+"27",
+"64",
+"125"
+],
+[
+"150",
+"27",
+"64",
+"125"
+],
+0,
+"27, 64 and 125 are cubes; 150 is not.",
+"27, 64 और 125 घन हैं; 150 नहीं।"
+],
+[
+"Odd One Out",
+"Medium",
+"Find the odd one out: Delhi, Mumbai, Chennai, Nepal",
+"विषम को चुनिए: दिल्ली, मुंबई, चेन्नई, नेपाल",
+[
+"Nepal",
+"Delhi",
+"Mumbai",
+"Chennai"
+],
+[
+"नेपाल",
+"दिल्ली",
+"मुंबई",
+"चेन्नई"
+],
+0,
+"Nepal is a country; the others are Indian cities.",
+"नेपाल देश है; बाकी भारतीय शहर हैं।"
+]
+]
