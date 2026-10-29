@@ -32,6 +32,14 @@ const answerStats = async (userId, questionIds) => {
   return byId;
 };
 
+// Short revision notes per topic, kept in content/haryana-gk/notes.json (bilingual).
+const NOTES_PATH = new URL('../content/haryana-gk/notes.json', import.meta.url);
+let notesCache = null;
+const loadNotes = async () => {
+  if (!notesCache) notesCache = JSON.parse(await fs.readFile(NOTES_PATH, 'utf8'));
+  return notesCache;
+};
+
 // GET /api/haryana-gk/overview — topics with question counts and this user's accuracy.
 export const getOverview = async (req, res) => {
   try {
@@ -66,24 +74,17 @@ export const getOverview = async (req, res) => {
       accuracy: o.attempted ? Math.round((o.correct / o.attempted) * 100) : null,
     });
 
+    const notes = await loadNotes().catch(() => ({}));
     res.json({
       subject: HARYANA_GK_SUBJECT,
       totalQuestions: questions.length,
       pyqCount,
       overall: withAccuracy(overall),
-      topics: topics.map(withAccuracy),
+      topics: topics.map((t) => ({ ...withAccuracy(t), hasNotes: !!notes[t.key] })),
     });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
-};
-
-// Short revision notes per topic, kept in content/haryana-gk/notes.json (bilingual).
-const NOTES_PATH = new URL('../content/haryana-gk/notes.json', import.meta.url);
-let notesCache = null;
-const loadNotes = async () => {
-  if (!notesCache) notesCache = JSON.parse(await fs.readFile(NOTES_PATH, 'utf8'));
-  return notesCache;
 };
 
 // GET /api/haryana-gk/notes/:topic  (topic key: history, geography, culture, polity, economy, sports)
