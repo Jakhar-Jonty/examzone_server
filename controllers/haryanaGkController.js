@@ -1,3 +1,4 @@
+import fs from 'fs/promises';
 import Question from '../models/Question.js';
 import { visibleStatus } from '../utils/questionVisibility.js';
 import ExamAttempt from '../models/ExamAttempt.js';
@@ -72,6 +73,26 @@ export const getOverview = async (req, res) => {
       overall: withAccuracy(overall),
       topics: topics.map(withAccuracy),
     });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+// Short revision notes per topic, kept in content/haryana-gk/notes.json (bilingual).
+const NOTES_PATH = new URL('../content/haryana-gk/notes.json', import.meta.url);
+let notesCache = null;
+const loadNotes = async () => {
+  if (!notesCache) notesCache = JSON.parse(await fs.readFile(NOTES_PATH, 'utf8'));
+  return notesCache;
+};
+
+// GET /api/haryana-gk/notes/:topic  (topic key: history, geography, culture, polity, economy, sports)
+export const getNotes = async (req, res) => {
+  try {
+    const notes = await loadNotes();
+    const item = notes[req.params.topic];
+    if (!item) return res.status(404).json({ message: 'No notes for this topic yet.' });
+    res.json({ topic: req.params.topic, ...item });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
