@@ -199,6 +199,19 @@ export const deleteWordOfDay = async (req, res) => {
   }
 };
 
+// When nothing is scheduled for today, rotate through published items by IST
+// day so every student sees the same one and it changes daily.
+const IST_MS = 5.5 * 60 * 60 * 1000;
+const istDayNumber = () => Math.floor((Date.now() + IST_MS) / 86400000);
+const rotateDaily = async (Model) => {
+  const count = await Model.countDocuments({ status: 'published' });
+  if (!count) return null;
+  return Model.findOne({ status: 'published' })
+    .sort({ scheduledDate: 1, _id: 1 })
+    .skip(istDayNumber() % count)
+    .populate('createdBy', 'name');
+};
+
 export const getCurrentWordOfDay = async (req, res) => {
   try {
     const today = new Date();
@@ -206,10 +219,11 @@ export const getCurrentWordOfDay = async (req, res) => {
     const tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1);
 
-    const word = await WordOfDay.findOne({
-      scheduledDate: { $gte: today, $lt: tomorrow },
-      status: 'published'
-    }).populate('createdBy', 'name');
+    const word =
+      (await WordOfDay.findOne({
+        scheduledDate: { $gte: today, $lt: tomorrow },
+        status: 'published'
+      }).populate('createdBy', 'name')) || (await rotateDaily(WordOfDay));
 
     if (!word) {
       return res.status(404).json({ message: 'No word of the day available' });
@@ -422,10 +436,11 @@ export const getCurrentMotivationalQuote = async (req, res) => {
     const tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1);
 
-    const quote = await MotivationalQuote.findOne({
-      scheduledDate: { $gte: today, $lt: tomorrow },
-      status: 'published'
-    }).populate('createdBy', 'name');
+    const quote =
+      (await MotivationalQuote.findOne({
+        scheduledDate: { $gte: today, $lt: tomorrow },
+        status: 'published'
+      }).populate('createdBy', 'name')) || (await rotateDaily(MotivationalQuote));
 
     if (!quote) {
       return res.status(404).json({ message: 'No motivational quote available' });
