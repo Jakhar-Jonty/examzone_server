@@ -445,6 +445,8 @@ export const getDashboardStats = async (req, res) => {
       prepCategories,
       upcomingExams,
       dailyQuizSession,
+      testsToday,
+      practiceToday,
     ] = await Promise.all([
       loadAvailableExams(),
       ExamAttempt.find({ user: user._id, isCompleted: true }).select('percentage').lean(),
@@ -476,6 +478,9 @@ export const getDashboardStats = async (req, res) => {
       })
         .select('isCompleted totalQuestions correctAnswers accuracy')
         .lean(),
+      // daily goal progress: tests and practice sets finished today (IST)
+      ExamAttempt.countDocuments({ user: user._id, isCompleted: true, endTime: { $gte: istDayStart(now) } }),
+      PracticeSession.countDocuments({ user: user._id, isCompleted: true, endTime: { $gte: istDayStart(now) } }),
     ]);
 
     // Exam history stats
@@ -541,6 +546,10 @@ export const getDashboardStats = async (req, res) => {
     res.json({
       targetExams: focusTargets || targetExams,
       upcomingExams,
+      today: {
+        completed: testsToday + practiceToday,
+        goal: user.preferences?.dailyTestGoal || 3,
+      },
       dailyQuiz: dailyQuizSession
         ? {
             sessionId: dailyQuizSession._id,

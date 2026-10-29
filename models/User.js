@@ -138,6 +138,7 @@ const userSchema = new mongoose.Schema({
 
     // Study Preferences
     dailyStudyGoal: { type: Number, default: 60 }, // minutes
+    dailyTestGoal: { type: Number, default: 3, min: 1, max: 10 }, // tests/practice sets a day, shown on Home
     preferredStudyTime: { type: String, enum: ['morning', 'afternoon', 'evening', 'night'] },
     difficultyPreference: { type: String, enum: ['adaptive', 'easy', 'medium', 'hard'], default: 'adaptive' },
 
