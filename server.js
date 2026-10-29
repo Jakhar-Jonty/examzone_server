@@ -1,3 +1,5 @@
+// must load first so errors from start-up onward are reported
+import { reportError, reportServerErrors } from './utils/sentry.js';
 import http from 'http';
 import express from 'express';
 import cors from 'cors';
@@ -44,6 +46,7 @@ if (!isServerless) {
 // Security headers; resources may be loaded cross-origin (web app on another domain)
 app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
 app.use(cors({ origin: '*', credentials: true }));
+app.use(reportServerErrors);
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -103,6 +106,7 @@ app.get('/health', (req, res) => {
 
 app.use((err, req, res, next) => {
   console.error(err.stack);
+  if ((err.status || 500) >= 500) reportError(err, req);
   res.status(err.status || 500).json({
     message: err.message || 'Internal Server Error',
     error: process.env.NODE_ENV === 'development' ? err : {},
