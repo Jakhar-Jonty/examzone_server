@@ -56,7 +56,7 @@ const editableFields = (body) => {
   return out;
 };
 
-const publishProblems = (ca) => {
+export const publishProblems = (ca) => {
   const problems = [];
   if (!ca.title && !ca.titleHindi) problems.push('Add a title.');
   if (!ca.summary && !ca.summaryHindi) problems.push('Add a summary.');
@@ -225,6 +225,24 @@ export const adminUpdate = async (req, res) => {
   }
 };
 
+/**
+ * Publish an item: create/update its questions, mark it published and notify
+ * students (first publish of today's item). Shared by the admin button and the
+ * daily auto-draft job. Callers check publishProblems() first.
+ */
+export const publishCurrentAffair = async (ca, userId) => {
+  await syncQuestions(ca, linkedIds(ca), userId);
+  const firstPublish = !ca.publishedAt;
+  ca.status = 'published';
+  ca.publishedAt = ca.publishedAt || new Date();
+  ca.reviewedBy = userId;
+  await ca.save();
+  if (firstPublish && ca.date === istDateKey()) {
+    notifyCurrentAffairsPublished(ca).catch((err) => console.error('CA notify failed:', err.message));
+  }
+  return ca;
+};
+
 // POST /api/current-affairs/admin/:id/publish
 export const adminPublish = async (req, res) => {
   try {
@@ -232,19 +250,8 @@ export const adminPublish = async (req, res) => {
     if (!ca) return res.status(404).json({ message: 'Not found' });
     const problems = publishProblems(ca);
     if (problems.length) return res.status(400).json({ message: problems.join(' '), problems });
-
-    await syncQuestions(ca, linkedIds(ca), req.user._id);
-    const firstPublish = !ca.publishedAt;
-    ca.status = 'published';
-    ca.publishedAt = ca.publishedAt || new Date();
-    ca.reviewedBy = req.user._id;
-    await ca.save();
+    await publishCurrentAffair(ca, req.user._id);
     res.json({ item: ca });
-
-    // notify students (once per day) — after responding so the admin isn't kept waiting
-    if (firstPublish && ca.date === istDateKey()) {
-      notifyCurrentAffairsPublished(ca).catch((err) => console.error('CA notify failed:', err.message));
-    }
   } catch (err) {
     sendError(res, err);
   }

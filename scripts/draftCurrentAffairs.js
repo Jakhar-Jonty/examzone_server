@@ -1,5 +1,6 @@
 // Draft current affairs from the latest PIB releases right now (same job the
-// scheduler runs at 7:00 and 18:00 IST). Drafts appear in Admin → Current Affairs.
+// scheduler runs at 7:00 and 18:00 IST). Drafts whose answers are all found in the
+// release are published; the rest appear in Admin → Current Affairs.
 //   node scripts/draftCurrentAffairs.js [count]     (default 2)
 import dotenv from 'dotenv';
 import mongoose from 'mongoose';
