@@ -3,3 +3,7 @@ node_modules/
 .DS_Store
 *.log
 
+
+# env backups (contain secrets)
+.env.*
+!.env.example
