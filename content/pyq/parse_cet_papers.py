@@ -1,4 +1,4 @@
-"""Parse HSSC CET Group C 2025 papers (Hindi text + answer key) into batch rows.
+"""Parse HSSC CET papers (Group C 2022/2025, Group D 2023) (Hindi text + answer key) into batch rows.
 
 Source pages (third-party transcription of the official papers and keys):
   mseducationtv.com/hssc-cet-group-c-paper-<date>-shift-<n>-answer-key/
@@ -13,10 +13,19 @@ import subprocess
 import sys
 
 PAPERS = [
-    ("26 July 2025 Shift 1", "https://mseducationtv.com/hssc-cet-group-c-paper-26-july-2025-shift-1-answer-key/"),
-    ("26 July 2025 Shift 2", "https://mseducationtv.com/hssc-cet-group-c-paper-26-july-2025-shift-2-answer-key/"),
-    ("27 July 2025 Shift 1", "https://mseducationtv.com/hssc-cet-group-c-paper-27-july-2025-shift-1-answer-key/"),
-    ("27 July 2025 Shift 2", "https://mseducationtv.com/hssc-cet-group-c-paper-27-july-2025-shift-2-answer-key/"),
+    # (label, url, sourceExam, year, section rule)
+    ("26 July 2025 Shift 1", "https://mseducationtv.com/hssc-cet-group-c-paper-26-july-2025-shift-1-answer-key/", "HSSC CET Group C", 2025, "cet-c"),
+    ("26 July 2025 Shift 2", "https://mseducationtv.com/hssc-cet-group-c-paper-26-july-2025-shift-2-answer-key/", "HSSC CET Group C", 2025, "cet-c"),
+    ("27 July 2025 Shift 1", "https://mseducationtv.com/hssc-cet-group-c-paper-27-july-2025-shift-1-answer-key/", "HSSC CET Group C", 2025, "cet-c"),
+    ("27 July 2025 Shift 2", "https://mseducationtv.com/hssc-cet-group-c-paper-27-july-2025-shift-2-answer-key/", "HSSC CET Group C", 2025, "cet-c"),
+    ("5 Nov 2022 Shift 1", "https://mseducationtv.com/hssc-cet-group-c-paper-05-nov-2022-shift-1-answer-key/", "HSSC CET Group C", 2022, "none"),
+    ("5 Nov 2022 Shift 2", "https://mseducationtv.com/hssc-cet-group-c-paper-05-nov-2022-shift-2-answer-key/", "HSSC CET Group C", 2022, "none"),
+    ("6 Nov 2022 Shift 1", "https://mseducationtv.com/hssc-cet-group-c-paper-06-nov-2022-shift-1-answer-key/", "HSSC CET Group C", 2022, "none"),
+    ("6 Nov 2022 Shift 2", "https://mseducationtv.com/hssc-cet-group-c-paper-06-nov-2022-shift-2-answer-key/", "HSSC CET Group C", 2022, "none"),
+    ("21 Oct 2023 Shift 1", "https://mseducationtv.com/hssc-cet-group-d-paper-21-oct-2023-shift-1-answer-key/", "HSSC CET Group D", 2023, "none"),
+    ("21 Oct 2023 Shift 2", "https://mseducationtv.com/hssc-cet-group-d-paper-21-oct-2023-shift-2-answer-key/", "HSSC CET Group D", 2023, "none"),
+    ("22 Oct 2023 Shift 1", "https://mseducationtv.com/hssc-cet-group-d-paper-22-oct-2023-shift-1-answer-key/", "HSSC CET Group D", 2023, "none"),
+    ("22 Oct 2023 Shift 2", "https://mseducationtv.com/hssc-cet-group-d-paper-22-oct-2023-shift-2-answer-key/", "HSSC CET Group D", 2023, "none"),
 ]
 L = "ABCD"
 
@@ -63,9 +72,15 @@ def parse(page):
     return qs
 
 
+NUM2L = {"1": "A", "2": "B", "3": "C", "4": "D", "5": "E"}
+
+
 def to_row(num, rest):
     if "[[IMAGE]]" in rest:
         return None, "image"
+    # options are (A)-(E) on newer papers and (1)-(5) on older ones
+    rest = re.sub(r"(?m)^\(([1-5])\)", lambda m: f"({NUM2L[m.group(1)]})", rest)
+    rest = re.sub(r"((?:उत्तर|Answer)\s*[–—:-]\s*)\(([1-5])\)", lambda m: f"{m.group(1)}({NUM2L[m.group(2)]})", rest)
     ans = re.search(r"(?:उत्तर|Answer)\s*[–—:-]\s*\(([A-E])\)\s*(.*)", rest)
     if not ans:
         return None, "no answer line"
@@ -94,7 +109,10 @@ def to_row(num, rest):
     return {"num": num, "q": q, "options": [opts[k] for k in L], "correct": L.index(letter)}, None
 
 
-for label, url in PAPERS:
+only = sys.argv[1:]  # optional filter, e.g. "2022" or "Group D"
+for label, url, exam, year, rule in PAPERS:
+    if only and not any(o in f"{exam} {label}" for o in only):
+        continue
     page = fetch(url)
     raw = parse(page)
     rows, skipped = [], []
@@ -105,7 +123,8 @@ for label, url in PAPERS:
         else:
             skipped.append((num, why))
     nums = [r["num"] for r in rows]
-    print(f"{label}: parsed {len(raw)}, kept {len(rows)}, skipped {len(skipped)} {skipped[:12]}", file=sys.stderr)
+    print(f"{exam} {label}: parsed {len(raw)}, kept {len(rows)}, skipped {len(skipped)} {skipped[:12]}", file=sys.stderr)
     assert len(set(nums)) == len(nums), "duplicate question numbers"
-    slug = label.lower().replace(" ", "-")
-    json.dump({"label": label, "source": url, "questions": rows}, open(f"content/pyq/cet-2025-{slug}.json", "w"), ensure_ascii=False, indent=0)
+    slug = ("cet-d" if "Group D" in exam else "cet") + f"-{year}-" + label.lower().replace(" ", "-")
+    json.dump({"label": label, "sourceExam": exam, "year": year, "sectionRule": rule, "source": url, "questions": rows},
+              open(f"content/pyq/{slug}.json", "w"), ensure_ascii=False, indent=0)
