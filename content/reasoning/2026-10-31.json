@@ -1,0 +1,464 @@
+[
+[
+"Number Series",
+"Easy",
+"Next number: 4, 12, 36, 108, ?",
+"अगली संख्या: 4, 12, 36, 108, ?",
+[
+"324",
+"216",
+"312",
+"432"
+],
+[
+"324",
+"216",
+"312",
+"432"
+],
+0,
+"Rule × 3; next = 324.",
+"नियम × 3; अगला = 324।"
+],
+[
+"Number Series",
+"Easy",
+"Next number: 1, 3, 7, 15, 31, ?",
+"अगली संख्या: 1, 3, 7, 15, 31, ?",
+[
+"63",
+"62",
+"47",
+"64"
+],
+[
+"63",
+"62",
+"47",
+"64"
+],
+0,
+"Rule × 2 + 1; next = 63.",
+"नियम × 2 + 1; अगला = 63।"
+],
+[
+"Number Series",
+"Easy",
+"Next number: 10, 13, 19, 28, 40, ?",
+"अगली संख्या: 10, 13, 19, 28, 40, ?",
+[
+"55",
+"52",
+"53",
+"58"
+],
+[
+"55",
+"52",
+"53",
+"58"
+],
+0,
+"Rule differences 3, 6, 9, 12, 15; next = 55.",
+"नियम अंतर 3, 6, 9, 12, 15; अगला = 55।"
+],
+[
+"Number Series",
+"Easy",
+"Next number: 2, 5, 10, 17, 26, 37, ?",
+"अगली संख्या: 2, 5, 10, 17, 26, 37, ?",
+[
+"50",
+"48",
+"49",
+"51"
+],
+[
+"50",
+"48",
+"49",
+"51"
+],
+0,
+"Rule n² + 1; next = 50.",
+"नियम n² + 1; अगला = 50।"
+],
+[
+"Number Series",
+"Easy",
+"Next number: 81, 27, 9, 3, ?",
+"अगली संख्या: 81, 27, 9, 3, ?",
+[
+"1",
+"0.5",
+"2",
+"1.5"
+],
+[
+"1",
+"0.5",
+"2",
+"1.5"
+],
+0,
+"Rule ÷ 3; next = 1.",
+"नियम ÷ 3; अगला = 1।"
+],
+[
+"Number Series",
+"Easy",
+"Next number: 5, 10, 20, 35, 55, ?",
+"अगली संख्या: 5, 10, 20, 35, 55, ?",
+[
+"80",
+"75",
+"85",
+"90"
+],
+[
+"80",
+"75",
+"85",
+"90"
+],
+0,
+"Rule differences 5, 10, 15, 20, 25; next = 80.",
+"नियम अंतर 5, 10, 15, 20, 25; अगला = 80।"
+],
+[
+"Coding-Decoding",
+"Medium",
+"If MILK is coded PLON, then BREAD is coded:",
+"यदि MILK को PLON लिखा जाए, तो BREAD को लिखा जाएगा:",
+[
+"EUHDG",
+"FVIEH",
+"DTGCF",
+"GDHUE"
+],
+[
+"EUHDG",
+"FVIEH",
+"DTGCF",
+"GDHUE"
+],
+0,
+"Each letter +3: BREAD → EUHDG.",
+"हर अक्षर +3: BREAD → EUHDG।"
+],
+[
+"Coding-Decoding",
+"Medium",
+"If HOUSE is coded GNTRD, then TRAIN is coded:",
+"यदि HOUSE को GNTRD लिखा जाए, तो TRAIN को लिखा जाएगा:",
+[
+"SQZHM",
+"TRAIN",
+"RPYGL",
+"MHZQS"
+],
+[
+"SQZHM",
+"TRAIN",
+"RPYGL",
+"MHZQS"
+],
+0,
+"Each letter -1: TRAIN → SQZHM.",
+"हर अक्षर -1: TRAIN → SQZHM।"
+],
+[
+"Letter Series",
+"Easy",
+"Next letter: C, H, M, R, W, ?",
+"अगला अक्षर: C, H, M, R, W, ?",
+[
+"B",
+"C",
+"A",
+"D"
+],
+[
+"B",
+"C",
+"A",
+"D"
+],
+0,
+"Step +5; next B.",
+"चरण +5; अगला B।"
+],
+[
+"Letter Series",
+"Easy",
+"Next letter: X, T, P, L, H, ?",
+"अगला अक्षर: X, T, P, L, H, ?",
+[
+"D",
+"E",
+"C",
+"F"
+],
+[
+"D",
+"E",
+"C",
+"F"
+],
+0,
+"Step -4; next D.",
+"चरण -4; अगला D।"
+],
+[
+"Calendar",
+"Hard",
+"What day was 22 January 2015 (Beti Bachao Beti Padhao launch)?",
+"22 जनवरी 2015 (बेटी बचाओ बेटी पढ़ाओ की शुरुआत) को कौन सा दिन था?",
+[
+"Thursday",
+"Friday",
+"Saturday",
+"Monday"
+],
+[
+"गुरुवार",
+"शुक्रवार",
+"शनिवार",
+"सोमवार"
+],
+0,
+"It was a Thursday.",
+"उस दिन गुरुवार था।"
+],
+[
+"Calendar",
+"Hard",
+"What day was 1 November 2014?",
+"1 नवंबर 2014 को कौन सा दिन था?",
+[
+"Saturday",
+"Sunday",
+"Monday",
+"Wednesday"
+],
+[
+"शनिवार",
+"रविवार",
+"सोमवार",
+"बुधवार"
+],
+0,
+"It was a Saturday.",
+"उस दिन शनिवार था।"
+],
+[
+"Clock",
+"Medium",
+"Angle between the hands at 7:20?",
+"7:20 बजे सुइयों के बीच का कोण?",
+[
+"100°",
+"115°",
+"90°",
+"120°"
+],
+[
+"100°",
+"115°",
+"90°",
+"120°"
+],
+0,
+"|30×7 − 5.5×20| = 100°.",
+"|30×7 − 5.5×20| = 100°।"
+],
+[
+"Clock",
+"Medium",
+"Angle between the hands at 10:10?",
+"10:10 बजे सुइयों के बीच का कोण?",
+[
+"115°",
+"100°",
+"90°",
+"120°"
+],
+[
+"115°",
+"100°",
+"90°",
+"120°"
+],
+0,
+"|30×10 − 5.5×10| = 115°.",
+"|30×10 − 5.5×10| = 115°।"
+],
+[
+"Direction",
+"Medium",
+"A man walks 8 km north, then 6 km east. How far is he from the start?",
+"एक व्यक्ति 8 किमी उत्तर और फिर 6 किमी पूर्व चलता है। वह आरंभ से कितनी दूर है?",
+[
+"10 km",
+"14 km",
+"2 km",
+"12 km"
+],
+[
+"10 किमी",
+"14 किमी",
+"2 किमी",
+"12 किमी"
+],
+0,
+"√(8² + 6²) = 10 km.",
+"√(8² + 6²) = 10 किमी।"
+],
+[
+"Direction",
+"Easy",
+"Facing south, you turn 180°. Which way do you face?",
+"दक्षिण की ओर मुँह करके आप 180° घूमते हैं। अब किस दिशा में हैं?",
+[
+"North",
+"East",
+"West",
+"South"
+],
+[
+"उत्तर",
+"पूर्व",
+"पश्चिम",
+"दक्षिण"
+],
+0,
+"180° from south is north.",
+"दक्षिण से 180° उत्तर है।"
+],
+[
+"Ranking",
+"Easy",
+"In a queue Rita is 12th from the front and 20th from the back. How many people are in the queue?",
+"एक कतार में रीता आगे से 12वीं और पीछे से 20वीं है। कतार में कितने लोग हैं?",
+[
+"31",
+"32",
+"30",
+"33"
+],
+[
+"31",
+"32",
+"30",
+"33"
+],
+0,
+"12 + 20 − 1 = 31.",
+"12 + 20 − 1 = 31।"
+],
+[
+"Analogy",
+"Easy",
+"Doctor : Patient :: Teacher : ?",
+"डॉक्टर : मरीज़ :: शिक्षक : ?",
+[
+"Student",
+"School",
+"Book",
+"Class"
+],
+[
+"छात्र",
+"विद्यालय",
+"पुस्तक",
+"कक्षा"
+],
+0,
+"A doctor treats patients; a teacher teaches students.",
+"डॉक्टर मरीज़ों का इलाज करता है; शिक्षक छात्रों को पढ़ाता है।"
+],
+[
+"Analogy",
+"Easy",
+"6 : 36 :: 9 : ?",
+"6 : 36 :: 9 : ?",
+[
+"81",
+"72",
+"54",
+"99"
+],
+[
+"81",
+"72",
+"54",
+"99"
+],
+0,
+"36 = 6²; 9² = 81.",
+"36 = 6²; 9² = 81।"
+],
+[
+"Odd One Out",
+"Easy",
+"Odd one out: Hockey, Cricket, Chess, Football",
+"विषम चुनिए: हॉकी, क्रिकेट, शतरंज, फुटबॉल",
+[
+"Chess",
+"Hockey",
+"Cricket",
+"Football"
+],
+[
+"शतरंज",
+"हॉकी",
+"क्रिकेट",
+"फुटबॉल"
+],
+0,
+"Chess is an indoor board game; the others are field games.",
+"शतरंज इनडोर बोर्ड खेल है; बाकी मैदानी खेल हैं।"
+],
+[
+"Odd One Out",
+"Easy",
+"Odd one out: 16, 36, 49, 63",
+"विषम चुनिए: 16, 36, 49, 63",
+[
+"63",
+"16",
+"36",
+"49"
+],
+[
+"63",
+"16",
+"36",
+"49"
+],
+0,
+"16, 36, 49 are squares; 63 is not.",
+"16, 36, 49 वर्ग हैं; 63 नहीं।"
+],
+[
+"Blood Relation",
+"Medium",
+"A's father is B's son. How is B related to A?",
+"A के पिता, B के पुत्र हैं। B, A का क्या है?",
+[
+"Grandparent",
+"Parent",
+"Uncle",
+"Brother"
+],
+[
+"दादा/दादी",
+"माता/पिता",
+"चाचा",
+"भाई"
+],
+0,
+"B's son is A's father, so B is A's grandparent.",
+"B का पुत्र A का पिता है, अतः B, A के दादा/दादी हैं।"
+]
+]

@@ -1,0 +1,233 @@
+[
+[
+"Physics",
+"Easy",
+"What is the SI unit of pressure?",
+"दाब का SI मात्रक क्या है?",
+[
+"Pascal",
+"Newton",
+"Joule",
+"Watt"
+],
+[
+"पास्कल",
+"न्यूटन",
+"जूल",
+"वाट"
+],
+0,
+"Pressure is measured in pascals (N/m²).",
+"दाब पास्कल (N/m²) में मापा जाता है।"
+],
+[
+"Physics",
+"Easy",
+"Which instrument measures electric current?",
+"विद्युत धारा मापने वाला यंत्र कौन सा है?",
+[
+"Ammeter",
+"Voltmeter",
+"Barometer",
+"Thermometer"
+],
+[
+"एमीटर",
+"वोल्टमीटर",
+"बैरोमीटर",
+"थर्मामीटर"
+],
+0,
+"An ammeter measures current; a voltmeter measures potential difference.",
+"एमीटर धारा मापता है; वोल्टमीटर विभवांतर।"
+],
+[
+"Physics",
+"Medium",
+"Echo is caused by which property of sound?",
+"प्रतिध्वनि ध्वनि के किस गुण के कारण होती है?",
+[
+"Reflection",
+"Refraction",
+"Diffraction",
+"Absorption"
+],
+[
+"परावर्तन",
+"अपवर्तन",
+"विवर्तन",
+"अवशोषण"
+],
+0,
+"An echo is reflected sound.",
+"प्रतिध्वनि परावर्तित ध्वनि है।"
+],
+[
+"Physics",
+"Medium",
+"Which form of energy is stored in a stretched rubber band?",
+"खिंचे हुए रबर बैंड में कौन सी ऊर्जा संचित होती है?",
+[
+"Potential energy",
+"Kinetic energy",
+"Heat energy",
+"Light energy"
+],
+[
+"स्थितिज ऊर्जा",
+"गतिज ऊर्जा",
+"ऊष्मा ऊर्जा",
+"प्रकाश ऊर्जा"
+],
+0,
+"Energy stored because of shape or position is potential energy.",
+"आकार या स्थिति के कारण संचित ऊर्जा स्थितिज ऊर्जा है।"
+],
+[
+"Chemistry",
+"Easy",
+"What is the chemical symbol of iron?",
+"लोहे का रासायनिक संकेत क्या है?",
+[
+"Fe",
+"Ir",
+"In",
+"I"
+],
+[
+"Fe",
+"Ir",
+"In",
+"I"
+],
+0,
+"Iron is Fe (from Latin ferrum).",
+"लोहा Fe (लैटिन ferrum) है।"
+],
+[
+"Chemistry",
+"Medium",
+"Which gas is used in the manufacture of vanaspati ghee by hydrogenation of oils?",
+"तेलों के हाइड्रोजनीकरण से वनस्पति घी बनाने में कौन सी गैस प्रयुक्त होती है?",
+[
+"Hydrogen",
+"Oxygen",
+"Nitrogen",
+"Helium"
+],
+[
+"हाइड्रोजन",
+"ऑक्सीजन",
+"नाइट्रोजन",
+"हीलियम"
+],
+0,
+"Hydrogen is added to vegetable oils (with a nickel catalyst) to make vanaspati.",
+"वनस्पति बनाने के लिए तेलों में हाइड्रोजन (निकल उत्प्रेरक के साथ) मिलाई जाती है।"
+],
+[
+"Chemistry",
+"Medium",
+"Lime water turns milky when which gas is passed through it?",
+"चूने के पानी में कौन सी गैस गुज़ारने पर वह दूधिया हो जाता है?",
+[
+"Carbon dioxide",
+"Oxygen",
+"Hydrogen",
+"Nitrogen"
+],
+[
+"कार्बन डाइऑक्साइड",
+"ऑक्सीजन",
+"हाइड्रोजन",
+"नाइट्रोजन"
+],
+0,
+"CO₂ forms insoluble calcium carbonate with lime water.",
+"CO₂ चूने के पानी के साथ अघुलनशील कैल्शियम कार्बोनेट बनाती है।"
+],
+[
+"Biology",
+"Easy",
+"Which organ is used for breathing in fish?",
+"मछली में साँस लेने का अंग कौन सा है?",
+[
+"Gills",
+"Lungs",
+"Skin",
+"Trachea"
+],
+[
+"गलफड़े (गिल्स)",
+"फेफड़े",
+"त्वचा",
+"श्वासनली"
+],
+0,
+"Fish breathe through gills.",
+"मछली गलफड़ों से साँस लेती है।"
+],
+[
+"Biology",
+"Easy",
+"Which is the largest gland in the human body?",
+"मानव शरीर की सबसे बड़ी ग्रंथि कौन सी है?",
+[
+"Liver",
+"Pancreas",
+"Thyroid",
+"Pituitary"
+],
+[
+"यकृत",
+"अग्न्याशय",
+"थायरॉइड",
+"पीयूष"
+],
+0,
+"The liver is the largest gland.",
+"यकृत सबसे बड़ी ग्रंथि है।"
+],
+[
+"Biology",
+"Medium",
+"Which part of the plant carries water from roots to leaves?",
+"पौधे का कौन सा भाग जड़ों से पत्तियों तक पानी ले जाता है?",
+[
+"Xylem",
+"Phloem",
+"Stomata",
+"Cambium"
+],
+[
+"जाइलम",
+"फ्लोएम",
+"रंध्र",
+"कैम्बियम"
+],
+0,
+"Xylem carries water; phloem carries food.",
+"जाइलम पानी ले जाता है; फ्लोएम भोजन।"
+],
+[
+"Biology",
+"Medium",
+"The normal blood pressure of a healthy adult is about:",
+"एक स्वस्थ वयस्क का सामान्य रक्तचाप लगभग कितना होता है?",
+[
+"120/80 mm Hg",
+"80/120 mm Hg",
+"140/100 mm Hg",
+"100/60 mm Hg"
+],
+[
+"120/80 mm Hg",
+"80/120 mm Hg",
+"140/100 mm Hg",
+"100/60 mm Hg"
+],
+0,
+"About 120 (systolic) / 80 (diastolic) mm Hg.",
+"लगभग 120 (सिस्टोलिक) / 80 (डायस्टोलिक) mm Hg।"
+]
+]
